@@ -144,8 +144,8 @@ export function AIRewriteModal({
                 <p class="text-sm mt-1">{error}</p>
               </div>
             ) : (
-              <div class="prose prose-lg max-w-none">
-                <div class="whitespace-pre-wrap rewrite-content">
+              <div class="w-full">
+                <div class="whitespace-pre-wrap rewrite-content text-gray-900" style="word-wrap: break-word; overflow-wrap: break-word;">
                   {streamingText}
                   {isGenerating && (
                     <span class="streaming-cursor" />

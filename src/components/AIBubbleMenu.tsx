@@ -177,11 +177,12 @@ export function AIBubbleMenu({ editor, aiStatus }: AIBubbleMenuProps) {
   useEffect(() => {
     const handleSelectionChange = () => {
       const { selection } = editor.state
-      const { empty } = selection
+      const { empty, from, to } = selection
 
       if (empty) {
         setIsVisible(false)
         setShowAIMenu(false)
+        setAIPrompt('')
         return
       }
 
@@ -190,50 +191,62 @@ export function AIBubbleMenu({ editor, aiStatus }: AIBubbleMenuProps) {
         const currentSelection = editor.state.selection
         if (currentSelection.empty) return
 
+        // Check if selection changed - if so, hide menus
+        if (currentSelection.from !== from || currentSelection.to !== to) {
+          setIsVisible(false)
+          setShowAIMenu(false)
+          setAIPrompt('')
+          return
+        }
+
         // Get the coordinates of the selection
         const { view } = editor
         const start = view.coordsAtPos(currentSelection.from)
         const end = view.coordsAtPos(currentSelection.to)
         
-        // Get viewport dimensions
-        const viewportHeight = window.innerHeight
-        const viewportWidth = window.innerWidth
+        // Calculate position relative to the page
+        const scrollTop = window.pageYOffset
+        const scrollLeft = window.pageXOffset
         
-        // Convert to viewport coordinates
-        const selectionTop = Math.min(start.top, end.top) - window.scrollY
-        const selectionBottom = Math.max(start.bottom, end.bottom) - window.scrollY
-        const selectionLeft = (start.left + end.left) / 2 - window.scrollX
+        // Use top of selection for toolbar menu
+        const selectionTop = Math.min(start.top, end.top) + scrollTop
+        const selectionBottom = Math.max(start.bottom, end.bottom) + scrollTop
+        const selectionLeft = (start.left + end.left) / 2 + scrollLeft
         
-        // Constrain to viewport bounds and position menus
+        console.log('🎯 REWRITE BUBBLE MENU POSITIONING:')
+        console.log('  Selection viewport coords:', { 
+          top: Math.min(start.top, end.top), 
+          bottom: Math.max(start.bottom, end.bottom),
+          left: (start.left + end.left) / 2 
+        })
+        console.log('  Current scroll:', { scrollTop, scrollLeft })
+        console.log('  Selection page coords:', { top: selectionTop, bottom: selectionBottom, left: selectionLeft })
+        
         const menuHeight = 60
-        const menuWidth = 300
         
-        // For the formatting menu - prefer above selection, but ensure it's visible
-        let menuTop: number
-        let menuLeft: number
-        
-        if (selectionTop >= menuHeight + 20) {
-          // Enough space above - position above selection
-          menuTop = Math.max(10, selectionTop - menuHeight - 10)
-        } else if (selectionBottom + menuHeight + 20 <= viewportHeight) {
-          // Not enough space above but space below - position below
-          menuTop = Math.min(viewportHeight - menuHeight - 10, selectionBottom + 10)
-        } else {
-          // Selection too large for viewport - position at top
-          menuTop = 10
-        }
-        
-        // Constrain horizontally
-        menuLeft = Math.max(10, Math.min(selectionLeft - menuWidth / 2, viewportWidth - menuWidth - 10))
+        // Position toolbar menu ABOVE the top of selection
+        const menuTop = selectionTop - menuHeight - 10
+        const menuLeft = selectionLeft
 
         setPosition({
           top: menuTop,
           left: menuLeft
         })
 
-        // Position the AI prompt below the main menu
-        const aiPromptTop = menuTop + menuHeight + 5
-        const aiPromptLeft = menuLeft
+        // Position the AI prompt BELOW the bottom of selection
+        const aiPromptTop = selectionBottom + 10
+        const aiPromptLeft = selectionLeft
+        
+        console.log('  Toolbar menu page position:', { top: menuTop, left: menuLeft })
+        console.log('  AI Prompt page position:', { top: aiPromptTop, left: aiPromptLeft })
+        console.log('  Toolbar viewport position:', { 
+          top: menuTop - window.pageYOffset, 
+          left: menuLeft - window.pageXOffset 
+        })
+        console.log('  AI Prompt viewport position:', { 
+          top: aiPromptTop - window.pageYOffset, 
+          left: aiPromptLeft - window.pageXOffset 
+        })
         
         setAIPromptPosition({
           top: aiPromptTop,
@@ -258,33 +271,67 @@ export function AIBubbleMenu({ editor, aiStatus }: AIBubbleMenuProps) {
       }
     }
 
+    const handleScroll = () => {
+      // Hide menus when user scrolls
+      if (isVisible) {
+        console.log('🚫 Hiding bubble menu - user scrolled')
+        setIsVisible(false)
+        setShowAIMenu(false)
+        setAIPrompt('')
+      }
+    }
+
     editor.on('selectionUpdate', handleSelectionChange)
     editor.on('update', handleSelectionChange)
     document.addEventListener('mousedown', handleClickOutside)
-    // No scroll listener needed for fixed positioning
+    window.addEventListener('scroll', handleScroll, true) // Use capture phase to catch all scrolls
     
     return () => {
       editor.off('selectionUpdate', handleSelectionChange)
       editor.off('update', handleSelectionChange)
       document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll, true)
     }
-  }, [editor])
+  }, [editor, isVisible])
 
   // Clean up when becoming invisible
   useEffect(() => {
     if (!isVisible) {
       setShowAIMenu(false)
-      setOriginalText('')
-      setShowRewriteModal(false)
-      setCurrentRewriteOptions(null)
-      setCurrentCustomPrompt('')
       setAIPrompt('')
     }
   }, [isVisible])
 
+  // Close modal when selection changes
+  useEffect(() => {
+    const handleUpdate = () => {
+      if (showRewriteModal) {
+        // Close modal if selection changed
+        const { selection } = editor.state
+        if (selection.empty) {
+          setShowRewriteModal(false)
+          setOriginalText('')
+          setCurrentRewriteOptions(null)
+          setCurrentCustomPrompt('')
+        }
+      }
+    }
+
+    editor.on('selectionUpdate', handleUpdate)
+    return () => {
+      editor.off('selectionUpdate', handleUpdate)
+    }
+  }, [editor, showRewriteModal])
+
   if (!isVisible) return null
 
 
+
+  // Calculate fixed viewport position from page position
+  const viewportTop = position.top - window.pageYOffset
+  const viewportLeft = position.left - window.pageXOffset
+  const aiPromptViewportTop = aiPromptPosition.top - window.pageYOffset
+  const aiPromptViewportLeft = aiPromptPosition.left - window.pageXOffset
 
   return (
     <>
@@ -293,8 +340,8 @@ export function AIBubbleMenu({ editor, aiStatus }: AIBubbleMenuProps) {
         ref={menuRef}
         class="fixed z-[100] animate-fade-in"
         style={{ 
-          top: `${position.top}px`, 
-          left: `${position.left}px`,
+          top: `${viewportTop}px`, 
+          left: `${viewportLeft}px`,
           transform: 'translateX(-50%)'
         }}
       >
@@ -404,13 +451,13 @@ export function AIBubbleMenu({ editor, aiStatus }: AIBubbleMenuProps) {
       )}
       </div>
 
-      {/* AI Prompt (below selection) */}
-      {aiStatus.rewriterAvailable && (
+      {/* AI Prompt (below selection) - stays anchored to document position */}
+      {aiStatus.rewriterAvailable && !showAIMenu && (
         <div 
           class="fixed z-[99] bg-white border border-purple-200 rounded-lg shadow-lg animate-fade-in space-prompt"
           style={{ 
-            top: `${aiPromptPosition.top}px`, 
-            left: `${aiPromptPosition.left}px`,
+            top: `${aiPromptViewportTop}px`, 
+            left: `${aiPromptViewportLeft}px`,
             transform: 'translateX(-50%)'
           }}
         >

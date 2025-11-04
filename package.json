@@ -35,6 +35,7 @@
     "@tiptap/react": "^2.1.13",
     "@tiptap/starter-kit": "^2.1.13",
     "clsx": "^2.0.0",
+    "dexie": "^4.2.1",
     "lowlight": "^3.1.0",
     "lucide-preact": "^0.294.0",
     "marked": "^9.1.6",

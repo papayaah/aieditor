@@ -54,16 +54,7 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
   const [generationPosition, setGenerationPosition] = useState({ top: 0, left: 0 })
   const menuContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const spacePromptRef = useRef<HTMLInputElement>(null)
-
-  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0
-  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 0
-
-  const clamp = (value: number, min: number, max: number) => {
-    if (max <= min) return min
-    return Math.min(Math.max(value, min), max)
-  }
-
+  const spacePromptRef = useRef<HTMLTextAreaElement>(null)
 
   const menuItems: MenuItem[] = [
     // Basic blocks
@@ -309,19 +300,49 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
     setSpacePromptText('')
   }
 
-  // Focus space prompt when it appears
+  // Close space prompt when selection changes or user types
   useEffect(() => {
-    console.log('🎯 Space prompt effect triggered:', { showSpacePrompt, position: spacePromptPosition })
-    if (showSpacePrompt) {
-      console.log('✅ Space prompt should be visible!')
-      if (spacePromptRef.current) {
-        console.log('✅ Focusing space prompt input')
-        setTimeout(() => spacePromptRef.current?.focus(), 10)
-      } else {
-        console.log('❌ Space prompt ref not found')
+    if (!showSpacePrompt) return
+
+    const handleUpdate = () => {
+      // Close space prompt if cursor moved away from the insert position
+      const { selection } = editor.state
+      // Allow small movement (like typing in the prompt area) but close if moved to different line
+      if (Math.abs(selection.from - spaceInsertAt) > 5) {
+        console.log('🚫 Closing space prompt - cursor moved away')
+        closeSpacePrompt()
       }
     }
-  }, [showSpacePrompt, spacePromptPosition])
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Close on Enter (new line) or Arrow keys (navigation)
+      if (['Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        // Don't close if typing in the prompt input
+        if (spacePromptRef.current && document.activeElement === spacePromptRef.current) {
+          return
+        }
+        console.log('🚫 Closing space prompt - navigation key pressed')
+        closeSpacePrompt()
+      }
+    }
+
+    editor.on('selectionUpdate', handleUpdate)
+    editor.on('update', handleUpdate)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      editor.off('selectionUpdate', handleUpdate)
+      editor.off('update', handleUpdate)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [editor, showSpacePrompt, spaceInsertAt])
+
+  // Focus space prompt when it appears
+  useEffect(() => {
+    if (showSpacePrompt && spacePromptRef.current) {
+      setTimeout(() => spacePromptRef.current?.focus(), 10)
+    }
+  }, [showSpacePrompt])
 
   const handleAIGeneration = async (prompt: string, insertPosition?: number) => {
     // Prevent double generation
@@ -343,33 +364,30 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
     const currentPos = insertPosition !== undefined ? insertPosition : view.state.selection.from
     const coords = view.coordsAtPos(currentPos)
     
-    // Get viewport dimensions
-    const viewportHeight = window.innerHeight
-    const viewportWidth = window.innerWidth
+    // Calculate position relative to the page
+    const scrollTop = window.pageYOffset
+    const scrollLeft = window.pageXOffset
     
-    // Convert to viewport coordinates and constrain to bounds
-    const menuHeight = 60
-    const menuWidth = 200
+    console.log('🎯 AI GENERATION INDICATOR POSITIONING:')
+    console.log('  Cursor viewport coords:', { top: coords.top, left: coords.left })
+    console.log('  Current scroll:', { scrollTop, scrollLeft })
+    console.log('  Generation page coords:', { top: coords.top + scrollTop, left: coords.left + scrollLeft })
     
-    let viewportTop = coords.top - window.scrollY
-    let viewportLeft = coords.left - window.scrollX
-    
-    // Ensure generation indicator stays within viewport bounds
-    viewportTop = Math.max(10, Math.min(viewportTop, viewportHeight - menuHeight - 10))
-    viewportLeft = Math.max(10, Math.min(viewportLeft, viewportWidth - menuWidth - 10))
-    
-    const genPosition = {
-      top: viewportTop,
-      left: viewportLeft
-    }
-    setGenerationPosition(genPosition)
+    setGenerationPosition({
+      top: coords.top + scrollTop,
+      left: coords.left + scrollLeft
+    })
 
     setIsGenerating(true)
     closeMenu()
     closeSpacePrompt()
 
+    // Track the start position for streaming updates
+    let streamStartPos = currentPos
+    let previousLength = 0
+
     try {
-      console.log('Generating text with prompt:', prompt)
+      console.log('🎯 Starting AI streaming generation with prompt:', prompt)
 
       // Get AI writer instance
       const writer = await getOrCreateWriter({
@@ -378,49 +396,75 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
         length: 'medium'
       })
 
-      // Use streaming for better user experience
+      // Use streaming to update content in real-time
       const stream = writer.writeStreaming(prompt, {
         context: editor.getText() || 'General writing'
       })
       
-      let accumulatedText = ''
+      let fullText = ''
       
-      // Stream the text chunks as they arrive (just accumulate, don't display)
+      // Stream the text chunks as they arrive and update the editor in real-time
       for await (const chunk of stream) {
-        accumulatedText += chunk
+        // Chrome AI streams the full text so far, not incremental chunks
+        fullText = chunk
+        
+        // Calculate what's new since last update
+        const newText = fullText.substring(previousLength)
+        
+        if (newText) {
+          // Insert only the new text at the end of what we've already inserted
+          const insertPos = streamStartPos + previousLength
+          
+          editor.chain()
+            .focus()
+            .setTextSelection(insertPos)
+            .insertContent(newText)
+            .run()
+          
+          previousLength = fullText.length
+        }
       }
 
-      // Insert final content after streaming is complete
+      console.log('✅ AI streaming complete. Generated:', fullText.length, 'characters')
+      
+      // After streaming is complete, convert markdown to HTML and replace
       try {
-        // Convert final markdown to HTML
-        const htmlContent = marked.parse(accumulatedText)
+        const htmlContent = marked.parse(fullText)
         
-        // Insert the formatted content at the cursor position
+        // Replace the plain text with formatted HTML
         editor.chain()
           .focus()
-          .setTextSelection(currentPos)
+          .setTextSelection({ from: streamStartPos, to: streamStartPos + fullText.length })
           .insertContent(htmlContent + ' ')
           .run()
+        
+        console.log('✅ Markdown formatting applied')
       } catch (error) {
-        console.warn('Markdown parsing failed:', error)
-        // Fallback to plain text
+        console.warn('⚠️ Markdown parsing failed, keeping plain text:', error)
+        // Just add a space at the end
         editor.chain()
           .focus()
-          .setTextSelection(currentPos)
-          .insertContent(accumulatedText + ' ')
+          .setTextSelection(streamStartPos + fullText.length)
+          .insertContent(' ')
           .run()
       }
 
-      console.log('Generated result:', accumulatedText)
     } catch (error) {
-      console.error('AI generation failed:', error)
+      console.error('❌ AI generation failed:', error)
       console.error('Error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
         aiStatus
       })
       
-      // No cleanup needed since we don't insert placeholder text
+      // Clean up any partial text if needed
+      if (previousLength > 0) {
+        editor.chain()
+          .focus()
+          .setTextSelection({ from: streamStartPos, to: streamStartPos + previousLength })
+          .deleteSelection()
+          .run()
+      }
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       editor.chain().focus().insertContent(`<p><em>AI generation failed: ${errorMessage}</em></p>`).run()
@@ -451,24 +495,18 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
         const { view } = editor
         const coords = view.coordsAtPos($from.pos)
         
-        // Get viewport dimensions
-        const viewportHeight = window.innerHeight
-        const viewportWidth = window.innerWidth
+        // Calculate position relative to the page
+        const scrollTop = window.pageYOffset
+        const scrollLeft = window.pageXOffset
         
-        // Convert to viewport coordinates and constrain to bounds
-        const menuHeight = 200 // approximate menu height
-        const menuWidth = 320  // approximate menu width
-        
-        let viewportTop = coords.top - window.scrollY
-        let viewportLeft = coords.left - window.scrollX
-        
-        // Ensure menu stays within viewport bounds
-        viewportTop = Math.max(10, Math.min(viewportTop, viewportHeight - menuHeight - 10))
-        viewportLeft = Math.max(10, Math.min(viewportLeft, viewportWidth - menuWidth - 10))
+        console.log('🎯 SLASH MENU POSITIONING:')
+        console.log('  Cursor viewport coords:', { top: coords.top, left: coords.left })
+        console.log('  Current scroll:', { scrollTop, scrollLeft })
+        console.log('  Cursor page coords:', { top: coords.top + scrollTop, left: coords.left + scrollLeft })
         
         setPosition({ 
-          top: viewportTop, 
-          left: viewportLeft 
+          top: coords.top + scrollTop, 
+          left: coords.left + scrollLeft 
         })
         setIsVisible(true)
         
@@ -530,47 +568,64 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
       }
     }
 
+    const handleScroll = () => {
+      // Hide slash menu when user scrolls, but keep space prompt visible
+      if (isVisible) {
+        console.log('🚫 Hiding floating menu - user scrolled')
+        setIsVisible(false)
+        setSearch('')
+        setSelectedIndex(0)
+      }
+    }
+
     editor.on('selectionUpdate', handleUpdate)
     editor.on('update', handleUpdate)
     document.addEventListener('keydown', handleKeyDown)
-    // No scroll listener needed for fixed positioning
+    window.addEventListener('scroll', handleScroll, true) // Use capture phase to catch all scrolls
     document.addEventListener('mousedown', handleClickOutside)
 
     return () => {
       editor.off('selectionUpdate', handleUpdate)
       editor.off('update', handleUpdate)
       document.removeEventListener('keydown', handleKeyDown)
-      // No scroll listener cleanup needed
+      window.removeEventListener('scroll', handleScroll, true)
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [editor, isVisible, filteredItems, selectedIndex])
+
+  // Auto-resize textarea as user types
+  useEffect(() => {
+    if (spacePromptRef.current) {
+      const textarea = spacePromptRef.current as HTMLTextAreaElement
+      // Reset height to auto to get the correct scrollHeight
+      textarea.style.height = 'auto'
+      // Set height to scrollHeight to fit content
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+    }
+  }, [spacePromptText])
 
   useEffect(() => {
     setSelectedIndex(0)
   }, [search])
 
-  console.log('🎯 AIFloatingMenu render check:', { 
-    isVisible, 
-    isGenerating, 
-    showSpacePrompt,
-    spacePromptPosition,
-    aiAvailable: aiStatus.writerAvailable 
-  })
-  
   if (!isVisible && !isGenerating && !showSpacePrompt) {
     return null
   }
 
+  // Calculate fixed viewport positions from page positions
+  const generationViewportTop = generationPosition.top + 24 - window.pageYOffset
+  const generationViewportLeft = generationPosition.left - window.pageXOffset
+  const spacePromptViewportTop = spacePromptPosition.top + 24 - window.pageYOffset
+  const spacePromptViewportLeft = spacePromptPosition.left - window.pageXOffset
+  const menuViewportTop = position.top + 24 - window.pageYOffset
+  const menuViewportLeft = position.left - window.pageXOffset
+
   // AI is currently generating content
   if (isGenerating) {
-    const safeGenTop = clamp(generationPosition.top + 24, 12, viewportHeight ? viewportHeight - 80 : generationPosition.top + 24)
-    const safeGenLeft = clamp(generationPosition.left, 12, viewportWidth ? viewportWidth - 240 : generationPosition.left)
-
-    // Use viewport coordinates directly (already converted)
     return (
       <div 
         class="fixed z-[90] bg-white border border-gray-200 rounded-lg shadow-lg p-4 bubble-menu"
-        style={{ top: `${safeGenTop}px`, left: `${safeGenLeft}px` }}
+        style={{ top: `${generationViewportTop}px`, left: `${generationViewportLeft}px` }}
       >
         <div class="flex items-center space-x-2">
           <div class="spinner"></div>
@@ -580,30 +635,26 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
     )
   }
 
-  // Space-triggered AI prompt (like Notion) - PRIORITY RENDER with absolute positioning to stay anchored to text
+  // Space-triggered AI prompt (like Notion) - fixed to viewport, stays visible on scroll
   if (showSpacePrompt) {
-    const safeSpaceTop = clamp(spacePromptPosition.top + 24, 12, viewportHeight ? viewportHeight - 140 : spacePromptPosition.top + 24)
-    const safeSpaceLeft = clamp(spacePromptPosition.left, 12, viewportWidth ? viewportWidth - 330 : spacePromptPosition.left)
-
     return (
       <div 
-        class="fixed z-[95] bg-white border border-purple-200 rounded-lg shadow-lg p-3 animate-fade-in w-80 max-w-sm space-prompt"
+        class="fixed z-[95] bg-white border border-purple-200 rounded-lg shadow-lg p-3 animate-fade-in w-96 max-w-md space-prompt"
         style={{ 
-          top: `${safeSpaceTop}px`, 
-          left: `${safeSpaceLeft}px`
+          top: `${spacePromptViewportTop}px`, 
+          left: `${spacePromptViewportLeft}px`
         }}
       >
-        <div class="flex items-center space-x-2">
-          <div class="w-6 h-6 bg-purple-100 rounded flex items-center justify-center">
+        <div class="flex items-start space-x-2">
+          <div class="w-6 h-6 bg-purple-100 rounded flex items-center justify-center flex-shrink-0 mt-1">
             <SparklesIcon size={14} class="text-purple-600" />
           </div>
-          <input
-            ref={spacePromptRef}
-            type="text"
+          <textarea
+            ref={spacePromptRef as any}
             value={spacePromptText}
-            onChange={(e) => setSpacePromptText((e.target as HTMLInputElement).value)}
+            onChange={(e) => setSpacePromptText((e.target as HTMLTextAreaElement).value)}
             onKeyDown={async (e) => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 await handleAIGeneration(spacePromptText || 'Continue writing', spaceInsertAt)
               } else if (e.key === 'Escape') {
@@ -611,14 +662,17 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
                 closeSpacePrompt()
               }
             }}
-            placeholder="Ask AI anything..."
-            class="flex-1 text-sm bg-transparent outline-none ai-prompt-input"
+            placeholder="Ask AI anything... (Shift+Enter for new line)"
+            class="flex-1 text-sm bg-transparent outline-none ai-prompt-input resize-none overflow-hidden"
+            rows={1}
             autoFocus
+            style={{ minHeight: '24px', maxHeight: '200px' }}
           />
           <button
             onClick={async () => await handleAIGeneration(spacePromptText || 'Continue writing', spaceInsertAt)}
-            class="text-purple-600 hover:text-purple-800 p-1"
+            class="text-purple-600 hover:text-purple-800 p-1 flex-shrink-0 mt-1"
             disabled={isGenerating}
+            title="Generate (Enter)"
           >
             <SparklesIcon size={16} />
           </button>
@@ -632,8 +686,8 @@ export const AIFloatingMenu = forwardRef<any, AIFloatingMenuProps>(({
       ref={menuContainerRef}
       class="fixed z-[90] bg-white border border-gray-200 rounded-lg shadow-lg min-w-80 max-w-96 animate-fade-in bubble-menu ai-floating-menu"
       style={{ 
-        top: `${clamp(position.top + 24, 12, viewportHeight ? viewportHeight - 320 : position.top + 24)}px`, 
-        left: `${clamp(position.left, 12, viewportWidth ? viewportWidth - 320 : position.left)}px`
+        top: `${menuViewportTop}px`, 
+        left: `${menuViewportLeft}px`
       }}
     >
       {search.startsWith('/') && (

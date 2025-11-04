@@ -67,31 +67,27 @@ export const SpaceAIExtension = Extension.create<SpaceAIOptions>({
                   // Get coordinates of the current cursor position
                   const coords = updatedView.coordsAtPos(updatedSelection.from)
                   
-                  // Get viewport dimensions
-                  const viewportHeight = window.innerHeight
-                  const viewportWidth = window.innerWidth
+                  // Calculate position relative to the page
+                  const scrollTop = window.pageYOffset
+                  const scrollLeft = window.pageXOffset
                   
-                  // Convert to viewport coordinates and constrain to bounds
-                  const promptHeight = 60
-                  const promptWidth = 320
-                  
-                  let viewportTop = coords.top - window.scrollY
-                  let viewportLeft = coords.left - window.scrollX
-                  
-                  // Ensure prompt stays within viewport bounds
-                  viewportTop = Math.max(10, Math.min(viewportTop, viewportHeight - promptHeight - 10))
-                  viewportLeft = Math.max(10, Math.min(viewportLeft, viewportWidth - promptWidth - 10))
-                  
-                  const viewportCoords = {
-                    top: viewportTop,
-                    left: viewportLeft
+                  const pageCoords = {
+                    top: coords.top + scrollTop,
+                    left: coords.left + scrollLeft
                   }
                   
-                  console.log('📍 Cursor coords (viewport):', viewportCoords)
+                  console.log('🎯 SPACE AI WRITER PROMPT POSITIONING:')
+                  console.log('  Cursor viewport coords:', { top: coords.top, left: coords.left })
+                  console.log('  Current scroll:', { scrollTop, scrollLeft })
+                  console.log('  Cursor page coords:', pageCoords)
+                  console.log('  Prompt will render at viewport position:', {
+                    top: coords.top,
+                    left: coords.left
+                  })
                   
-                  // Call the callback with viewport position and insertion point
+                  // Call the callback with page position and insertion point
                   this.options.onSpacePressed(
-                    viewportCoords,
+                    pageCoords,
                     updatedSelection.from
                   )
                   
