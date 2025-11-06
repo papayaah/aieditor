@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useComponentsContext, useBlockNoteEditor } from '@blocknote/react';
 
-export const RewriteButton = () => {
+export const RewriteButton = ({ onStreamingBlock }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const [isRewriting, setIsRewriting] = useState(false);
@@ -10,8 +10,6 @@ export const RewriteButton = () => {
   const [availabilityStatus, setAvailabilityStatus] = useState('checking');
   const buttonRef = useRef(null);
   const dropdownRef = useRef(null);
-  const rewriterRef = useRef(null);
-  const rewriterConfigRef = useRef(null);
   const Components = useComponentsContext();
   const editor = useBlockNoteEditor();
 
@@ -109,21 +107,45 @@ export const RewriteButton = () => {
     setShowDropdown(false);
 
     try {
-      // Get current text cursor position and block
-      const currentBlock = editor.getTextCursorPosition().block;
-      if (!currentBlock) {
-        alert('Please place cursor in text to rewrite');
-        return;
-      }
-
-      // Extract text from current block
+      // Check if there's a text selection first
+      const selection = editor.getSelection();
       let selectedText = '';
-      if (currentBlock.content && Array.isArray(currentBlock.content)) {
-        currentBlock.content.forEach(item => {
-          if (item.type === 'text' && item.text) {
-            selectedText += item.text + ' ';
+      let blocksToRewrite = [];
+      
+      if (selection && selection.blocks && selection.blocks.length > 0) {
+        // User has selected text across one or more blocks
+        console.log('Selection detected:', selection);
+        blocksToRewrite = selection.blocks;
+        
+        // Extract text from all selected blocks
+        selection.blocks.forEach(block => {
+          if (block.content && Array.isArray(block.content)) {
+            block.content.forEach(item => {
+              if (item.type === 'text' && item.text) {
+                selectedText += item.text + ' ';
+              }
+            });
           }
+          selectedText += '\n'; // Add newline between blocks
         });
+      } else {
+        // No selection, use current block
+        const currentBlock = editor.getTextCursorPosition().block;
+        if (!currentBlock) {
+          alert('Please place cursor in text to rewrite');
+          return;
+        }
+        
+        blocksToRewrite = [currentBlock];
+        
+        // Extract text from current block
+        if (currentBlock.content && Array.isArray(currentBlock.content)) {
+          currentBlock.content.forEach(item => {
+            if (item.type === 'text' && item.text) {
+              selectedText += item.text + ' ';
+            }
+          });
+        }
       }
 
       selectedText = selectedText.trim();
@@ -132,11 +154,12 @@ export const RewriteButton = () => {
         return;
       }
 
-      console.log('Block to rewrite:', currentBlock);
+      console.log('Blocks to rewrite:', blocksToRewrite);
       console.log('Text to rewrite:', selectedText);
       console.log('Starting AI rewrite with options:', rewriteOptions);
 
-      // Create rewriter config
+      // Create a fresh rewriter for each operation
+      // Note: Rewriter instances cannot be reused after streaming
       const rewriterConfig = {
         tone: rewriteOptions.options.tone,
         format: rewriteOptions.options.format,
@@ -144,42 +167,30 @@ export const RewriteButton = () => {
         sharedContext: 'This is a document editor where users want to improve their writing.'
       };
 
-      let rewriter = rewriterRef.current;
-      let needsNewRewriter = false;
+      console.log('Creating new rewriter with config:', rewriterConfig);
+      const rewriter = await createRewriter(rewriterConfig);
 
-      // Check if we need a new rewriter (first time or config changed)
-      if (!rewriter || JSON.stringify(rewriterConfigRef.current) !== JSON.stringify(rewriterConfig)) {
-        needsNewRewriter = true;
+      // Use the first block for streaming
+      const firstBlock = blocksToRewrite[0];
+      
+      // Remove all blocks except the first one if multiple blocks selected
+      if (blocksToRewrite.length > 1) {
+        editor.removeBlocks(blocksToRewrite.slice(1));
       }
-
-      // Try to reuse existing rewriter, create new one if needed
-      if (needsNewRewriter) {
-        // Clean up old rewriter
-        if (rewriter) {
-          try {
-            rewriter.destroy();
-          } catch (error) {
-            console.log('Error destroying old rewriter:', error);
-          }
-        }
-
-        // Create new rewriter
-        console.log('Creating new rewriter with config:', rewriterConfig);
-        rewriter = await createRewriter(rewriterConfig);
-        rewriterRef.current = rewriter;
-        rewriterConfigRef.current = rewriterConfig;
-      } else {
-        console.log('Reusing existing rewriter');
-      }
-
-      // Clear the current block for streaming
-      editor.updateBlock(currentBlock, {
-        ...currentBlock,
+      
+      // Clear the first block for streaming
+      editor.updateBlock(firstBlock, {
+        ...firstBlock,
         content: [{
           type: "text",
           text: ""
         }]
       });
+
+      // Notify parent about streaming block for WriterPrompt positioning
+      if (onStreamingBlock) {
+        onStreamingBlock(firstBlock.id);
+      }
 
       // Stream the rewrite with specific context for this operation
       const stream = rewriter.rewriteStreaming(selectedText, {
@@ -194,8 +205,8 @@ export const RewriteButton = () => {
         
         // Update the block with the accumulated text
         try {
-          editor.updateBlock(currentBlock, {
-            ...currentBlock,
+          editor.updateBlock(firstBlock, {
+            ...firstBlock,
             content: [{
               type: "text",
               text: fullRewrittenText
@@ -216,7 +227,7 @@ export const RewriteButton = () => {
           
           if (formattedBlocks && formattedBlocks.length > 0) {
             // Replace with formatted blocks
-            editor.replaceBlocks([currentBlock], formattedBlocks);
+            editor.replaceBlocks([firstBlock], formattedBlocks);
           }
         } catch (error) {
           console.log('Error formatting final rewritten text:', error);
@@ -225,39 +236,15 @@ export const RewriteButton = () => {
 
     } catch (error) {
       console.error('AI rewrite failed:', error);
-      
-      // If we get an AbortError, try creating a fresh rewriter
-      if (error.name === 'AbortError' && rewriterRef.current) {
-        console.log('AbortError detected, will create fresh rewriter next time');
-        try {
-          rewriterRef.current.destroy();
-        } catch (destroyError) {
-          console.log('Error destroying failed rewriter:', destroyError);
-        }
-        rewriterRef.current = null;
-        rewriterConfigRef.current = null;
-      }
-      
       alert(`Rewrite failed: ${error.message}`);
     } finally {
+      // Note: We don't need to destroy the rewriter here as it's automatically
+      // cleaned up after streaming completes
       setIsRewriting(false);
     }
   };
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (rewriterRef.current) {
-        try {
-          rewriterRef.current.destroy();
-        } catch (error) {
-          console.log('Error destroying rewriter on unmount:', error);
-        }
-        rewriterRef.current = null;
-        rewriterConfigRef.current = null;
-      }
-    };
-  }, []);
+
 
   useEffect(() => {
     const handleClickOutside = (event) => {

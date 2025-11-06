@@ -1,14 +1,53 @@
 import { useState, useEffect, useRef } from 'react';
 import { incrementAIGenerations } from '../db';
 
-export const WriterPrompt = ({ editor, isReady, onSave, currentDocId }) => {
+// Helper functions for localStorage
+const getStoredSetting = (key, defaultValue) => {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored !== null ? stored : defaultValue;
+  } catch (error) {
+    console.log('Error reading from localStorage:', error);
+    return defaultValue;
+  }
+};
+
+const setStoredSetting = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    console.log('Error writing to localStorage:', error);
+  }
+};
+
+export const WriterPrompt = ({ editor, isReady, onSave, currentDocId, streamingBlockId, onStreamingBlock }) => {
   const [showInput, setShowInput] = useState(false);
   const [inputPosition, setInputPosition] = useState({ top: 0, left: 0 });
   const [inputValue, setInputValue] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [writerAvailable, setWriterAvailable] = useState(false);
+  
+  // Load settings from localStorage with defaults
+  const [tone, setTone] = useState(() => getStoredSetting('writerTone', 'formal'));
+  const [format, setFormat] = useState(() => getStoredSetting('writerFormat', 'markdown'));
+  const [length, setLength] = useState(() => getStoredSetting('writerLength', 'long'));
+  
   const inputRef = useRef(null);
   const writerRef = useRef(null);
+  const positionUpdateRef = useRef(null);
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    setStoredSetting('writerTone', tone);
+  }, [tone]);
+
+  useEffect(() => {
+    setStoredSetting('writerFormat', format);
+  }, [format]);
+
+  useEffect(() => {
+    setStoredSetting('writerLength', length);
+  }, [length]);
 
   // Check if Chrome AI Writer is available
   useEffect(() => {
@@ -162,16 +201,16 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId }) => {
         
         if (availability === 'available') {
           writerRef.current = await self.Writer.create({
-            tone: 'neutral',
-            format: 'markdown',
-            length: 'medium'
+            tone: tone,
+            format: format,
+            length: length
           });
         } else if (availability === 'downloadable') {
           // Include monitor for download progress
           writerRef.current = await self.Writer.create({
-            tone: 'neutral',
-            format: 'markdown',
-            length: 'medium',
+            tone: tone,
+            format: format,
+            length: length,
             monitor(m) {
               m.addEventListener('downloadprogress', (e) => {
                 console.log(`Downloading AI model: ${Math.round((e.loaded / e.total) * 100)}%`);
@@ -431,6 +470,89 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId }) => {
           {writerAvailable ? 'AI Writer' : 'Text Input'}
         </div>
       </div>
+
+      {writerAvailable && (
+        <div style={{ 
+          display: 'flex', 
+          gap: '8px', 
+          marginBottom: '8px',
+          padding: '8px',
+          backgroundColor: '#f9fafb',
+          borderRadius: '4px',
+          border: '1px solid #e5e5e5'
+        }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+              Tone
+            </label>
+            <select 
+              value={tone} 
+              onChange={(e) => setTone(e.target.value)}
+              disabled={isGenerating}
+              style={{
+                width: '100%',
+                padding: '4px 6px',
+                fontSize: '12px',
+                border: '1px solid #e5e5e5',
+                borderRadius: '4px',
+                backgroundColor: 'white',
+                cursor: isGenerating ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <option value="formal">Formal</option>
+              <option value="neutral">Neutral</option>
+              <option value="casual">Casual</option>
+            </select>
+          </div>
+          
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+              Length
+            </label>
+            <select 
+              value={length} 
+              onChange={(e) => setLength(e.target.value)}
+              disabled={isGenerating}
+              style={{
+                width: '100%',
+                padding: '4px 6px',
+                fontSize: '12px',
+                border: '1px solid #e5e5e5',
+                borderRadius: '4px',
+                backgroundColor: 'white',
+                cursor: isGenerating ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <option value="short">Short</option>
+              <option value="medium">Medium</option>
+              <option value="long">Long</option>
+            </select>
+          </div>
+          
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+              Format
+            </label>
+            <select 
+              value={format} 
+              onChange={(e) => setFormat(e.target.value)}
+              disabled={isGenerating}
+              style={{
+                width: '100%',
+                padding: '4px 6px',
+                fontSize: '12px',
+                border: '1px solid #e5e5e5',
+                borderRadius: '4px',
+                backgroundColor: 'white',
+                cursor: isGenerating ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <option value="markdown">Markdown</option>
+              <option value="plain-text">Plain Text</option>
+            </select>
+          </div>
+        </div>
+      )}
       
       <textarea
         value={inputValue}
