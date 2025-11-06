@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { 
   useCreateBlockNote,
@@ -12,13 +12,16 @@ import {
   UnnestBlockButton,
   CreateLinkButton
 } from '@blocknote/react';
+import { PDFExporter, pdfDefaultSchemaMappings } from '@blocknote/xl-pdf-exporter';
+import * as ReactPDF from '@react-pdf/renderer';
 import '@blocknote/mantine/style.css';
 import { loadDocument, saveDocument, createDocument, deleteDocument, getAllDocuments } from './db';
 import { WriterPrompt } from './components/WriterPrompt';
 import { RewriteButton } from './components/RewriteButton';
+import { DocumentInfo } from './components/DocumentInfo';
 import './App.css';
 
-function Editor({ docId, onSave }) {
+function Editor({ docId, onSave, onExportPdf }) {
   const [initialContent, setInitialContent] = useState(undefined);
   const [isReady, setIsReady] = useState(false);
 
@@ -113,6 +116,39 @@ function Editor({ docId, onSave }) {
     onSave(content);
   };
 
+  // Expose PDF export function
+  useEffect(() => {
+    if (editor && isReady && onExportPdf) {
+      onExportPdf.current = async (docTitle) => {
+        try {
+          // Create the PDF exporter
+          const exporter = new PDFExporter(editor.schema, pdfDefaultSchemaMappings);
+          
+          // Convert the blocks to a react-pdf document
+          const pdfDocument = await exporter.toReactPDFDocument(editor.document);
+          
+          // Use react-pdf to render and download the PDF
+          const pdfBlob = await ReactPDF.pdf(pdfDocument).toBlob();
+          
+          // Create download link
+          const url = URL.createObjectURL(pdfBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${docTitle}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          console.log('PDF exported successfully');
+        } catch (error) {
+          console.error('Error exporting to PDF:', error);
+          throw error;
+        }
+      };
+    }
+  }, [editor, isReady, onExportPdf]);
+
   if (!isReady) {
     return <div style={{ padding: '60px', color: '#9b9a97' }}>Loading...</div>;
   }
@@ -145,7 +181,7 @@ function Editor({ docId, onSave }) {
         />
       </BlockNoteView>
       
-      <WriterPrompt editor={editor} isReady={isReady} />
+      <WriterPrompt editor={editor} isReady={isReady} onSave={onSave} currentDocId={docId} />
     </div>
   );
 }
@@ -156,6 +192,7 @@ function App() {
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [markdown, setMarkdown] = useState('');
   const [showSidebar, setShowSidebar] = useState(true);
+  const exportPdfRef = useRef(null);
 
   useEffect(() => {
     loadDocuments();
@@ -176,6 +213,8 @@ function App() {
   const handleSave = async (content) => {
     if (!currentDocId) return;
     await saveDocument(currentDocId, content);
+    // Reload documents to refresh titles in sidebar
+    await loadDocuments();
   };
 
   const handleNewDocument = async () => {
@@ -224,6 +263,18 @@ function App() {
     alert('Markdown copied to clipboard!');
   };
 
+  const exportToPdf = async () => {
+    if (!currentDocId || !exportPdfRef.current) return;
+    
+    try {
+      const docTitle = getDocTitle(documents.find(doc => doc.id === currentDocId)) || 'document';
+      await exportPdfRef.current(docTitle);
+    } catch (error) {
+      console.error('Error exporting to PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+
   const getDocTitle = (doc) => {
     if (doc.title && doc.title !== 'Untitled Document') {
       return doc.title;
@@ -269,6 +320,11 @@ function App() {
             </div>
           ))}
         </div>
+        
+        <DocumentInfo 
+          currentDocId={currentDocId}
+          documents={documents}
+        />
       </div>
       
       <div className="main-content">
@@ -282,6 +338,9 @@ function App() {
           <button onClick={copyMarkdown} className="toolbar-btn">
             📋 Copy
           </button>
+          <button onClick={exportToPdf} className="toolbar-btn">
+            📄 PDF
+          </button>
         </div>
         <div className="editor-container">
           <div className="editor-wrapper">
@@ -290,7 +349,7 @@ function App() {
                 <pre>{markdown}</pre>
               </div>
             ) : (
-              <Editor key={currentDocId} docId={currentDocId} onSave={handleSave} />
+              <Editor key={currentDocId} docId={currentDocId} onSave={handleSave} onExportPdf={exportPdfRef} />
             )}
           </div>
         </div>

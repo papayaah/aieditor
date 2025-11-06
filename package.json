@@ -11,8 +11,10 @@
     "@blocknote/core": "^0.41.1",
     "@blocknote/mantine": "^0.41.1",
     "@blocknote/react": "^0.41.1",
+    "@blocknote/xl-pdf-exporter": "^0.41.1",
     "@mantine/core": "^8.3.6",
     "@mantine/hooks": "^8.3.6",
+    "@react-pdf/renderer": "^4.3.1",
     "dexie": "^4.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
