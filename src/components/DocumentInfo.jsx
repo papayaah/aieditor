@@ -12,7 +12,9 @@ const getTokenColor = (tokens) => {
   return '#059669'; // Green - Safe
 };
 
-export const DocumentInfo = ({ currentDocId, documents }) => {
+import { ChevronDown, ChevronUp } from 'lucide-react';
+
+export const DocumentInfo = ({ currentDocId, documents, collapsed, onToggle }) => {
   const [stats, setStats] = useState({
     wordCount: 0,
     charCount: 0,
@@ -102,9 +104,17 @@ export const DocumentInfo = ({ currentDocId, documents }) => {
 
   return (
     <div className="document-info">
-      <div className="document-info-title">
-        Document Info
+      <div className="document-info-header">
+        <div className="document-info-title">
+          Document Info
+        </div>
+        <button onClick={onToggle} className="collapse-toggle">
+          {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        </button>
       </div>
+      
+      {!collapsed && (
+        <>
       
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -207,6 +217,8 @@ export const DocumentInfo = ({ currentDocId, documents }) => {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

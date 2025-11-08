@@ -27,7 +27,8 @@ import {
   Moon,
   Sun,
   Settings,
-  Check
+  Check,
+  Sparkles
 } from 'lucide-react';
 import { loadDocument, saveDocument, createDocument, deleteDocument, getAllDocuments } from './db';
 import { WriterPrompt } from './components/WriterPrompt';
@@ -225,6 +226,12 @@ function App() {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
   });
+  const [aiAvailable, setAiAvailable] = useState(null);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [docInfoCollapsed, setDocInfoCollapsed] = useState(() => {
+    const saved = localStorage.getItem('docInfoCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
   const exportPdfRef = useRef(null);
 
   useEffect(() => {
@@ -235,6 +242,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('showSidebar', JSON.stringify(showSidebar));
   }, [showSidebar]);
+
+  useEffect(() => {
+    localStorage.setItem('docInfoCollapsed', JSON.stringify(docInfoCollapsed));
+  }, [docInfoCollapsed]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -248,7 +259,44 @@ function App() {
 
   useEffect(() => {
     loadDocuments();
+    checkAIAvailability();
   }, []);
+
+  const checkAIAvailability = async () => {
+    try {
+      if (typeof self === 'undefined') {
+        setAiAvailable(false);
+        return;
+      }
+
+      let writerOk = false;
+      let rewriterOk = false;
+
+      // Check Writer API
+      if ('Writer' in self) {
+        try {
+          const writerAvailability = await self.Writer.availability();
+          writerOk = writerAvailability === 'available' || writerAvailability === 'downloadable';
+        } catch (error) {
+          // Writer check failed
+        }
+      }
+
+      // Check Rewriter API
+      if ('Rewriter' in self) {
+        try {
+          const rewriterAvailability = await self.Rewriter.availability();
+          rewriterOk = rewriterAvailability === 'available' || rewriterAvailability === 'downloadable';
+        } catch (error) {
+          // Rewriter check failed
+        }
+      }
+      
+      setAiAvailable(writerOk && rewriterOk);
+    } catch (error) {
+      setAiAvailable(false);
+    }
+  };
 
   const loadDocuments = async () => {
     const docs = await getAllDocuments();
@@ -373,6 +421,62 @@ function App() {
 
   return (
     <div className="app">
+      {showAiModal && (
+        <div className="modal-overlay" onClick={() => setShowAiModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowAiModal(false)}>
+              <X size={20} />
+            </button>
+            <div className="modal-header">
+              <Sparkles size={24} />
+              <h2>Enable Chrome AI Features</h2>
+            </div>
+            <p className="modal-description">
+              This app uses Chrome's built-in AI features for writing and rewriting. Follow these steps to enable them:
+            </p>
+            <ol className="modal-steps">
+              <li>
+                <strong>Install Chrome Canary</strong>
+                <span>Version 127 or later required</span>
+              </li>
+              <li>
+                <strong>Open Chrome Flags</strong>
+                <code>chrome://flags/</code>
+              </li>
+              <li>
+                <strong>Enable Optimization Guide</strong>
+                <code>#optimization-guide-on-device-model</code>
+                <span>Enables on-device AI model (~4GB download)</span>
+              </li>
+              <li>
+                <strong>Enable Writer API</strong>
+                <code>#writer-api-for-gemini-nano</code>
+              </li>
+              <li>
+                <strong>Enable Rewriter API</strong>
+                <code>#rewriter-api-for-gemini-nano</code>
+              </li>
+              <li>
+                <strong>Restart Chrome</strong>
+                <span>Model will download automatically after restart</span>
+              </li>
+            </ol>
+            <div className="modal-footer">
+              <a 
+                href="https://developer.chrome.com/docs/ai/built-in" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="modal-link"
+              >
+                View Full Documentation →
+              </a>
+              <button onClick={() => setShowAiModal(false)} className="modal-button">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <button onClick={() => setShowSidebar(!showSidebar)} className="sidebar-toggle-btn">
         <ChevronLeft size={18} style={{ transform: showSidebar ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.3s' }} />
       </button>
@@ -413,6 +517,8 @@ function App() {
         <DocumentInfo 
           currentDocId={currentDocId}
           documents={documents}
+          collapsed={docInfoCollapsed}
+          onToggle={() => setDocInfoCollapsed(!docInfoCollapsed)}
         />
       </div>
       
@@ -420,9 +526,24 @@ function App() {
         <div className="floating-settings">
           <button onClick={() => setShowSettings(!showSettings)} className="settings-toggle">
             <Settings size={20} />
+            {aiAvailable === false && (
+              <span className="ai-status-badge" title="AI features unavailable">!</span>
+            )}
           </button>
           {showSettings && (
             <div className="settings-menu">
+              {aiAvailable === false && (
+                <button onClick={() => setShowAiModal(true)} className="settings-menu-btn ai-warning">
+                  <Sparkles size={16} />
+                  <span>AI Features Unavailable</span>
+                </button>
+              )}
+              {aiAvailable === true && (
+                <div className="ai-status-enabled">
+                  <Sparkles size={14} color="#10b981" />
+                  <span>AI Features Enabled</span>
+                </div>
+              )}
               {!showSidebar && (
                 <button onClick={() => setShowSidebar(true)} className="settings-menu-btn">
                   <ChevronLeft size={16} />
