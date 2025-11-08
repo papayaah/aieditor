@@ -28,7 +28,8 @@ import {
   Sun,
   Settings,
   Check,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { loadDocument, saveDocument, createDocument, deleteDocument, getAllDocuments } from './db';
 import { WriterPrompt } from './components/WriterPrompt';
@@ -112,7 +113,6 @@ function Editor({ docId, onSave, onExportPdf, darkMode }) {
             editor.removeBlocks([currentBlock]);
           }
         } catch (error) {
-          console.log('Error parsing markdown:', error);
           // If parsing fails, let default paste behavior happen
         }
       }
@@ -232,6 +232,8 @@ function App() {
     const saved = localStorage.getItem('docInfoCollapsed');
     return saved ? JSON.parse(saved) : false;
   });
+  const [deleteToast, setDeleteToast] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const exportPdfRef = useRef(null);
 
   useEffect(() => {
@@ -335,19 +337,41 @@ function App() {
     setShowMarkdown(false);
   };
 
-  const handleDeleteDocument = async (docId) => {
+  const handleDeleteClick = (docId, e) => {
+    e.stopPropagation();
+    
     if (documents.length === 1) {
-      alert('Cannot delete the last document');
+      setDeleteToast({ type: 'error', message: 'Cannot delete last document' });
+      setTimeout(() => setDeleteToast(null), 2000);
       return;
     }
-    if (confirm('Delete this document?')) {
-      await deleteDocument(docId);
-      await loadDocuments();
-      if (currentDocId === docId) {
-        const docs = await getAllDocuments();
-        setCurrentDocId(docs[0]?.id || null);
-      }
+    
+    // Show confirmation
+    setDeleteConfirmId(docId);
+    // Auto-cancel after 3 seconds
+    setTimeout(() => {
+      setDeleteConfirmId(null);
+    }, 3000);
+  };
+
+  const handleCancelDelete = (e) => {
+    e.stopPropagation();
+    setDeleteConfirmId(null);
+  };
+
+  const handleConfirmDelete = async (docId, e) => {
+    e.stopPropagation();
+    
+    setDeleteConfirmId(null);
+    await deleteDocument(docId);
+    await loadDocuments();
+    if (currentDocId === docId) {
+      const docs = await getAllDocuments();
+      setCurrentDocId(docs[0]?.id || null);
     }
+    
+    setDeleteToast({ type: 'success', message: 'Document deleted' });
+    setTimeout(() => setDeleteToast(null), 2000);
   };
 
   const toggleMarkdown = async () => {
@@ -421,10 +445,20 @@ function App() {
 
   return (
     <div className="app">
+      {deleteToast && (
+        <div className={`toast ${deleteToast.type}`}>
+          {deleteToast.type === 'success' ? (
+            <Check size={20} />
+          ) : (
+            <X size={20} />
+          )}
+          <span>{deleteToast.message}</span>
+        </div>
+      )}
       {showAiModal && (
         <div className="modal-overlay" onClick={() => setShowAiModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowAiModal(false)}>
+            <button className="modal-close" onClick={() => setShowAiModal(false)} aria-label="Close modal">
               <X size={20} />
             </button>
             <div className="modal-header">
@@ -477,7 +511,7 @@ function App() {
           </div>
         </div>
       )}
-      <button onClick={() => setShowSidebar(!showSidebar)} className="sidebar-toggle-btn">
+      <button onClick={() => setShowSidebar(!showSidebar)} className="sidebar-toggle-btn" aria-label={showSidebar ? 'Hide sidebar' : 'Show sidebar'}>
         <ChevronLeft size={18} style={{ transform: showSidebar ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.3s' }} />
       </button>
       
@@ -496,20 +530,41 @@ function App() {
               onClick={() => handleSelectDocument(doc.id)}
             >
               <div className="doc-item-content">
-                <span className="doc-title">{getDocTitle(doc)}</span>
+                <div className="doc-title-row">
+                  <span className="doc-title">{getDocTitle(doc)}</span>
+                  <div className="delete-btn-container">
+                    {deleteConfirmId === doc.id ? (
+                      <>
+                        <button
+                          className="cancel-btn"
+                          onClick={handleCancelDelete}
+                          aria-label="Cancel delete"
+                        >
+                          <X size={16} />
+                        </button>
+                        <button
+                          className="confirm-btn"
+                          onClick={(e) => handleConfirmDelete(doc.id, e)}
+                          aria-label="Confirm delete"
+                        >
+                          <Check size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => handleDeleteClick(doc.id, e)}
+                        aria-label="Delete document"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
                 {doc.updatedAt && (
                   <span className="doc-date">{formatDate(doc.updatedAt)}</span>
                 )}
               </div>
-              <button
-                className="delete-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteDocument(doc.id);
-                }}
-              >
-                <X size={16} />
-              </button>
             </div>
           ))}
         </div>
@@ -524,7 +579,7 @@ function App() {
       
       <div className="main-content">
         <div className="floating-settings">
-          <button onClick={() => setShowSettings(!showSettings)} className="settings-toggle">
+          <button onClick={() => setShowSettings(!showSettings)} className="settings-toggle" aria-label="Open settings menu">
             <Settings size={20} />
             {aiAvailable === false && (
               <span className="ai-status-badge" title="AI features unavailable">!</span>

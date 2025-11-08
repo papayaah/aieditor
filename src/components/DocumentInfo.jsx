@@ -108,7 +108,7 @@ export const DocumentInfo = ({ currentDocId, documents, collapsed, onToggle }) =
         <div className="document-info-title">
           Document Info
         </div>
-        <button onClick={onToggle} className="collapse-toggle">
+        <button onClick={onToggle} className="collapse-toggle" aria-label={collapsed ? 'Expand document info' : 'Collapse document info'}>
           {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
       </div>

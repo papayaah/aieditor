@@ -180,27 +180,23 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId, onStreamin
     setShowInput(false);
     
     try {
-      // Get or create writer instance
-      if (!writerRef.current) {
-        const availability = await self.Writer.availability();
-        
-        if (availability === 'available') {
-          writerRef.current = await self.Writer.create({
-            tone: tone,
-            format: format,
-            length: length,
-            outputLanguage: 'en'
-          });
-        } else if (availability === 'downloadable') {
-          writerRef.current = await self.Writer.create({
-            tone: tone,
-            format: format,
-            length: length,
-            outputLanguage: 'en'
-          });
-        } else {
-          throw new Error('Writer API is unavailable');
-        }
+      // Always create a fresh writer instance with current settings
+      // Writer instances should be recreated to pick up new settings
+      if (writerRef.current && writerRef.current.destroy) {
+        writerRef.current.destroy();
+      }
+      
+      const availability = await self.Writer.availability();
+      
+      if (availability === 'available' || availability === 'downloadable') {
+        writerRef.current = await self.Writer.create({
+          tone: tone,
+          format: format,
+          length: length,
+          outputLanguage: 'en'
+        });
+      } else {
+        throw new Error('Writer API is unavailable');
       }
 
       const currentBlock = editor.getTextCursorPosition().block;
@@ -256,74 +252,99 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId, onStreamin
       try {
         const currentBlock = editor.getBlock(currentBlockRef.id);
         if (currentBlock && fullText.trim()) {
-          // Manually parse markdown to preserve newlines in code blocks
-          const blocks = [];
-          let processedText = fullText.replace(/\r\n/g, '\n');
-          
-          // Split by code blocks while preserving them
-          const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
-          let lastIndex = 0;
-          let match;
-          
-          while ((match = codeBlockRegex.exec(processedText)) !== null) {
-            // Add text before code block
-            const textBefore = processedText.slice(lastIndex, match.index).trim();
-            if (textBefore) {
-              // Parse the text portion as markdown
-              const textBlocks = await editor.tryParseMarkdownToBlocks(textBefore);
+          // If format is plain-text, don't parse markdown - just split by newlines
+          if (format === 'plain-text') {
+            const lines = fullText.split('\n').filter(line => line.trim());
+            const blocks = lines.map(line => ({
+              type: 'paragraph',
+              content: [{
+                type: 'text',
+                text: line,
+                styles: {}
+              }]
+            }));
+            
+            if (blocks.length > 0) {
+              // Insert plain text blocks
+              const insertedBlocks = editor.insertBlocks(blocks, currentBlock, 'after');
+              
+              // Remove the temporary block
+              editor.removeBlocks([currentBlock]);
+              
+              // Position cursor at the end
+              if (insertedBlocks && insertedBlocks.length > 0) {
+                const lastBlock = insertedBlocks[insertedBlocks.length - 1];
+                editor.setTextCursorPosition(lastBlock, 'end');
+              }
+            }
+          } else {
+            // Format is markdown - parse it
+            const blocks = [];
+            let processedText = fullText.replace(/\r\n/g, '\n');
+            
+            // Split by code blocks while preserving them
+            const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+            let lastIndex = 0;
+            let match;
+            
+            while ((match = codeBlockRegex.exec(processedText)) !== null) {
+              // Add text before code block
+              const textBefore = processedText.slice(lastIndex, match.index).trim();
+              if (textBefore) {
+                // Parse the text portion as markdown
+                const textBlocks = await editor.tryParseMarkdownToBlocks(textBefore);
+                blocks.push(...textBlocks);
+              }
+              
+              // Add code block with preserved newlines
+              const language = match[1] || 'text';
+              const codeContent = match[2];
+              blocks.push({
+                type: 'codeBlock',
+                props: { language },
+                content: [{
+                  type: 'text',
+                  text: codeContent,
+                  styles: {}
+                }]
+              });
+              
+              lastIndex = match.index + match[0].length;
+            }
+            
+            // Add remaining text after last code block
+            const textAfter = processedText.slice(lastIndex).trim();
+            if (textAfter) {
+              const textBlocks = await editor.tryParseMarkdownToBlocks(textAfter);
               blocks.push(...textBlocks);
             }
             
-            // Add code block with preserved newlines
-            const language = match[1] || 'text';
-            const codeContent = match[2];
-            blocks.push({
-              type: 'codeBlock',
-              props: { language },
-              content: [{
-                type: 'text',
-                text: codeContent,
-                styles: {}
-              }]
-            });
-            
-            lastIndex = match.index + match[0].length;
-          }
-          
-          // Add remaining text after last code block
-          const textAfter = processedText.slice(lastIndex).trim();
-          if (textAfter) {
-            const textBlocks = await editor.tryParseMarkdownToBlocks(textAfter);
-            blocks.push(...textBlocks);
-          }
-          
-          console.log('Manually parsed blocks:', blocks);
-          
-          if (blocks.length > 0) {
-            // Insert formatted blocks after current block
-            const insertedBlocks = editor.insertBlocks(blocks, currentBlock, 'after');
-            
-            // Remove the temporary unformatted block
-            editor.removeBlocks([currentBlock]);
-            
-            // Position cursor at the end of the last inserted block
-            if (insertedBlocks && insertedBlocks.length > 0) {
-              const lastBlock = insertedBlocks[insertedBlocks.length - 1];
-              editor.setTextCursorPosition(lastBlock, 'end');
+            if (blocks.length > 0) {
+              // Insert formatted blocks after current block
+              const insertedBlocks = editor.insertBlocks(blocks, currentBlock, 'after');
+              
+              // Remove the temporary unformatted block
+              editor.removeBlocks([currentBlock]);
+              
+              // Position cursor at the end of the last inserted block
+              if (insertedBlocks && insertedBlocks.length > 0) {
+                const lastBlock = insertedBlocks[insertedBlocks.length - 1];
+                editor.setTextCursorPosition(lastBlock, 'end');
+              }
+            } else {
+              // Fallback: just add a space to the plain text
+              editor.updateBlock(currentBlock, {
+                ...currentBlock,
+                content: [{
+                  type: "text",
+                  text: fullText + " "
+                }]
+              });
             }
-          } else {
-            // Fallback: just add a space to the plain text
-            editor.updateBlock(currentBlock, {
-              ...currentBlock,
-              content: [{
-                type: "text",
-                text: fullText + " "
-              }]
-            });
           }
         }
       } catch (error) {
-        console.error('Markdown parsing error:', error);
+        console.error('Text formatting error:', error);
         console.error('Full text was:', fullText);
         // Silently handle final block formatting errors
       }
@@ -450,13 +471,15 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId, onStreamin
           border: '1px solid #e5e5e5'
         }}>
           <div style={{ flex: 1 }}>
-            <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+            <label htmlFor="writer-tone" style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
               Tone
             </label>
             <select 
+              id="writer-tone"
               value={tone} 
               onChange={(e) => setTone(e.target.value)}
               disabled={isGenerating}
+              aria-label="Select writing tone"
               style={{
                 width: '100%',
                 padding: '4px 6px',
@@ -474,13 +497,15 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId, onStreamin
           </div>
           
           <div style={{ flex: 1 }}>
-            <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+            <label htmlFor="writer-length" style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
               Length
             </label>
             <select 
+              id="writer-length"
               value={length} 
               onChange={(e) => setLength(e.target.value)}
               disabled={isGenerating}
+              aria-label="Select writing length"
               style={{
                 width: '100%',
                 padding: '4px 6px',
@@ -498,13 +523,15 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId, onStreamin
           </div>
           
           <div style={{ flex: 1 }}>
-            <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+            <label htmlFor="writer-format" style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>
               Format
             </label>
             <select 
+              id="writer-format"
               value={format} 
               onChange={(e) => setFormat(e.target.value)}
               disabled={isGenerating}
+              aria-label="Select output format"
               style={{
                 width: '100%',
                 padding: '4px 6px',
@@ -527,6 +554,7 @@ export const WriterPrompt = ({ editor, isReady, onSave, currentDocId, onStreamin
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleInputKeyDown}
         placeholder={writerAvailable ? "Ask AI to write anything..." : "Type your text here..."}
+        aria-label={writerAvailable ? "AI writing prompt" : "Text input"}
         autoFocus
         rows={3}
         disabled={isGenerating}
