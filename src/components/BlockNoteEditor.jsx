@@ -1,25 +1,30 @@
 import { useEffect, useState } from 'react';
-import '@blocknote/core/fonts/inter.css';
-import '@blocknote/mantine/style.css';
-import { useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
-import {
-  BasicTextStyleButton,
-  BlockTypeSelect,
-  ColorStyleButton,
-  CreateLinkButton,
+import { 
+  useCreateBlockNote,
   FormattingToolbar,
   FormattingToolbarController,
-  NestBlockButton,
+  BlockTypeSelect,
+  BasicTextStyleButton,
   TextAlignButton,
+  ColorStyleButton,
+  NestBlockButton,
   UnnestBlockButton,
+  CreateLinkButton
 } from '@blocknote/react';
+import '@blocknote/mantine/style.css';
 import { loadDocument } from '../db';
 import { WriterPrompt } from './WriterPrompt';
-import { StreamingBlockIndicator } from './StreamingBlockIndicator';
 import { RewriteButton } from './RewriteButton';
+import { StreamingBlockIndicator } from './StreamingBlockIndicator';
+import { useMarkdownPaste } from '../hooks/useMarkdownPaste';
+import { usePdfExport } from '../hooks/usePdfExport';
 
-export function BlockNoteEditor({ docId, onSave, darkMode, editorRef }) {
+/**
+ * BlockNoteEditor - The actual editor component with all BlockNote dependencies
+ * This is lazy-loaded to improve initial page performance
+ */
+export default function BlockNoteEditor({ docId, onSave, onExportPdf, darkMode }) {
   const [initialContent, setInitialContent] = useState(undefined);
   const [isReady, setIsReady] = useState(false);
   const [streamingBlockId, setStreamingBlockId] = useState(null);
@@ -28,7 +33,17 @@ export function BlockNoteEditor({ docId, onSave, darkMode, editorRef }) {
     setIsReady(false);
     setInitialContent(undefined);
     loadDocument(docId).then((content) => {
-      setInitialContent(content || []);
+      // Clean up old textInput inline content from database
+      const cleanedContent = (content || []).map(block => {
+        if (block.content && Array.isArray(block.content)) {
+          return {
+            ...block,
+            content: block.content.filter(item => item.type === 'text')
+          };
+        }
+        return block;
+      });
+      setInitialContent(cleanedContent);
       setIsReady(true);
     });
   }, [docId]);
@@ -47,22 +62,23 @@ export function BlockNoteEditor({ docId, onSave, darkMode, editorRef }) {
     },
   });
 
-  // Expose editor instance to parent
-  useEffect(() => {
-    if (editorRef && editor) {
-      editorRef.current = editor;
-    }
-  }, [editor, editorRef]);
-
+  // Update editor content when initialContent changes
   useEffect(() => {
     if (editor && initialContent && isReady) {
       editor.replaceBlocks(editor.document, initialContent);
     }
   }, [editor, initialContent, isReady]);
 
+  // Handle paste events to convert markdown
+  useMarkdownPaste(editor, isReady);
+
+  // Expose PDF export function
+  usePdfExport(editor, isReady, onExportPdf);
+
   const handleChange = () => {
     if (!editor || !isReady) return;
-    onSave(editor.document);
+    const content = editor.document;
+    onSave(content);
   };
 
   if (!isReady) {
@@ -70,13 +86,12 @@ export function BlockNoteEditor({ docId, onSave, darkMode, editorRef }) {
   }
 
   return (
-    <div style={{ position: 'relative', height: '100%', overflow: 'visible' }}>
+    <div style={{ position: 'relative' }}>
       <BlockNoteView 
         editor={editor} 
         onChange={handleChange}
         formattingToolbar={false}
         theme={darkMode ? 'dark' : 'light'}
-        className="blocknote-no-scroll"
       >
         <FormattingToolbarController
           formattingToolbar={() => (
@@ -98,14 +113,13 @@ export function BlockNoteEditor({ docId, onSave, darkMode, editorRef }) {
           )}
         />
       </BlockNoteView>
-      <StreamingBlockIndicator 
-        editor={editor} 
-        streamingBlockId={streamingBlockId} 
-      />
+      
+      <StreamingBlockIndicator editor={editor} streamingBlockId={streamingBlockId} />
+      
       <WriterPrompt 
         editor={editor} 
         isReady={isReady} 
-        onSave={onSave}
+        onSave={onSave} 
         currentDocId={docId}
         onStreamingBlock={setStreamingBlockId}
       />

@@ -11,7 +11,8 @@ import {
   Check,
   Github
 } from 'lucide-react';
-import './SettingsMenu.css';
+
+// CSS loaded via styles.css in App.jsx
 
 export function SettingsMenu({ 
   showMarkdown, 

@@ -8,6 +8,101 @@ import { ChevronLeft, Settings } from 'lucide-react';
 export function Shell() {
   return (
     <>
+      {/* Skeleton Overlay - visual loading effect */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: '#ffffff',
+        zIndex: 9999,
+        pointerEvents: 'none'
+      }}>
+        <style>
+          {`
+            @keyframes skeleton-shimmer {
+              0% { background-position: -200% 0; }
+              100% { background-position: 200% 0; }
+            }
+            .skeleton-bar {
+              background: linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%);
+              background-size: 200% 100%;
+              animation: skeleton-shimmer 1.5s ease-in-out infinite;
+              border-radius: 4px;
+            }
+          `}
+        </style>
+        
+        {/* Sidebar skeleton */}
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          left: 12,
+          width: 32,
+          height: 32,
+          borderRadius: 4,
+          background: '#f7f7f5',
+          border: '1px solid #e5e5e5'
+        }} />
+        
+        {/* Settings button skeleton */}
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          width: 40,
+          height: 40,
+          borderRadius: '50%',
+          background: '#f7f7f5',
+          border: '1px solid #e5e5e5'
+        }} />
+        
+        {/* Content skeleton - matches BlockNote editor positioning */}
+        <div style={{
+          padding: '60px 96px'
+        }}>
+          <div style={{
+            maxWidth: 900
+          }}>
+            <div className="skeleton-bar" style={{
+              height: 40,
+              width: '60%',
+              marginBottom: 16
+            }} />
+            <div className="skeleton-bar" style={{
+              height: 24,
+              width: '100%',
+              marginBottom: 8
+            }} />
+            <div className="skeleton-bar" style={{
+              height: 24,
+              width: '95%',
+              marginBottom: 8
+            }} />
+            <div className="skeleton-bar" style={{
+              height: 24,
+              width: '100%',
+              marginBottom: 8
+            }} />
+            <div className="skeleton-bar" style={{
+              height: 24,
+              width: '88%',
+              marginBottom: 8
+            }} />
+            <div className="skeleton-bar" style={{
+              height: 24,
+              width: '100%',
+              marginBottom: 8
+            }} />
+            <div className="skeleton-bar" style={{
+              height: 24,
+              width: '92%',
+              marginBottom: 8
+            }} />
+          </div>
+        </div>
+      </div>
       <style>{`
         :root {
           --bg-primary: #ffffff;
@@ -107,6 +202,10 @@ export function Shell() {
           padding: 60px 96px;
           min-height: 100%;
         }
+        .editor-skeleton {
+          max-width: 900px;
+          margin: 0 auto;
+        }
         .editor-skeleton p {
           font-size: 14px;
           color: var(--text-secondary);
@@ -122,7 +221,7 @@ export function Shell() {
         }
         .skeleton-title {
           height: 32px;
-          width: 60%;
+          width: 100px;
           margin-bottom: 24px;
         }
         .skeleton-short {
@@ -131,6 +230,10 @@ export function Shell() {
         @keyframes skeleton-loading {
           0% { background-position: 200% 0; }
           100% { background-position: -200% 0; }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
         }
         @media (max-width: 768px) {
           .editor-wrapper { padding: 40px 24px; }
@@ -151,12 +254,19 @@ export function Shell() {
           
           <div className="editor-container">
             <div className="editor-wrapper">
-              <div className="editor-skeleton">
-                <p>Loading your document...</p>
-                <div className="skeleton-line skeleton-title"></div>
-                <div className="skeleton-line"></div>
-                <div className="skeleton-line"></div>
-                <div className="skeleton-line skeleton-short"></div>
+              <div style={{
+                maxWidth: '900px',
+                fontSize: '18px',
+                lineHeight: '1.8',
+                color: 'var(--text-primary)'
+              }}>
+                <h1>Nano Chrome Built-In AI Document Editor — simple, fast.</h1>
+                <p>Clean, distraction-free writing for notes, docs, and ideas.</p>
+                <p>Feels familiar if you’ve used Notion — block-based typing using <a href="https://www.blocknotejs.org/">BlockNote</a>.</p>
+                <p>Unlimited AI while you write with Chrome’s built-in AI <a href="https://developer.chrome.com/docs/ai/writer-api">Writer</a> and <a href="https://developer.chrome.com/docs/ai/rewriter-api">Rewriter</a> API.</p>
+                <p>Use headings, lists, checkboxes, quotes, and more. Drag and drop to reorganize anything.</p>
+                <p>Saves automatically on your device. Export to PDF or Markdown with one click.</p>
+                <p>Works in your browser, even offline. No sign-up required. Free for everyday writing.</p>
               </div>
             </div>
           </div>
