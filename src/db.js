@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 
-export const db = new Dexie('NotionEditorDB');
+export const db = new Dexie('NanoEditorDB');
 
 db.version(2).stores({
   documents: '++id, title, content, updatedAt, createdAt'

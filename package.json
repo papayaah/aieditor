@@ -1,6 +1,9 @@
 {
-  "name": "notion-editor",
+  "name": "nano-editor",
   "version": "1.0.0",
+  "description": "A minimal document editor with Chrome's built-in AI for writing assistance",
+  "author": "David Ang",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
