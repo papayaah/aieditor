@@ -2,6 +2,10 @@
 
 A minimal document editor built with [BlockNote](https://www.blocknotejs.org/) and powered by Chrome's built-in AI.
 
+**[Try it live →](https://nanoeditor.vercel.app)**
+
+![Demo](demo.gif)
+
 ## Run Locally
 
 ```bash
