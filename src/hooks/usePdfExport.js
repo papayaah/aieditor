@@ -16,11 +16,12 @@ export const usePdfExport = (editor, isReady, exportPdfRef) => {
           // Use react-pdf to render and download the PDF
           const pdfBlob = await ReactPDF.pdf(pdfDocument).toBlob();
           
-          // Create download link
+          // Create download link with max 3 words in filename
+          const shortTitle = docTitle.split(' ').slice(0, 3).join(' ');
           const url = URL.createObjectURL(pdfBlob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `${docTitle}.pdf`;
+          a.download = `${shortTitle}.pdf`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);

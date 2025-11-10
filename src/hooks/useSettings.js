@@ -6,8 +6,6 @@ export const useSettings = () => {
     return saved ? JSON.parse(saved) : false;
   });
   
-  const [showSettings, setShowSettings] = useState(false);
-  
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
@@ -31,21 +29,9 @@ export const useSettings = () => {
     localStorage.setItem('docInfoCollapsed', JSON.stringify(docInfoCollapsed));
   }, [docInfoCollapsed]);
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (showSettings && !e.target.closest('.floating-settings')) {
-        setShowSettings(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showSettings]);
-
   return {
     showSidebar,
     setShowSidebar,
-    showSettings,
-    setShowSettings,
     darkMode,
     setDarkMode,
     docInfoCollapsed,

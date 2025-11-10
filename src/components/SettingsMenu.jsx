@@ -11,6 +11,7 @@ import {
   Check,
   Github
 } from 'lucide-react';
+import { useSettings } from '../hooks/useSettings';
 
 // CSS loaded via styles.css in App.jsx
 
@@ -18,14 +19,29 @@ export function SettingsMenu({
   showMarkdown, 
   onToggleMarkdown, 
   onCopyMarkdown, 
-  onExportPdf, 
-  darkMode, 
-  onToggleDarkMode,
+  exportPdfRef,
+  currentDocId,
+  documents,
+  getDocTitle,
   aiAvailable,
   onShowAiModal
 }) {
+  const { darkMode, setDarkMode } = useSettings();
   const [showSettings, setShowSettings] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
+
+  const handleExportPdf = async () => {
+    if (!currentDocId || !exportPdfRef.current) return;
+    
+    try {
+      const currentDoc = documents.find(doc => doc.id === currentDocId);
+      const docTitle = getDocTitle(currentDoc) || 'document';
+      await exportPdfRef.current(docTitle);
+    } catch (error) {
+      console.error('Error exporting to PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -72,11 +88,11 @@ export function SettingsMenu({
               {showCopied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
               <span>{showCopied ? 'Copied!' : 'Copy'}</span>
             </button>
-            <button onClick={onExportPdf} className="settings-menu-btn">
+            <button onClick={handleExportPdf} className="settings-menu-btn">
               <FileDown size={16} />
               <span>Export PDF</span>
             </button>
-            <button onClick={onToggleDarkMode} className="settings-menu-btn">
+            <button onClick={() => setDarkMode(!darkMode)} className="settings-menu-btn">
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
               <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
             </button>

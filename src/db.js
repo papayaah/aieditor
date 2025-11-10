@@ -23,12 +23,19 @@ export const createDocument = async () => {
   }
 };
 
-export const saveDocument = async (docId, content) => {
+export const saveDocument = async (docId, content, title) => {
   try {
-    await db.documents.update(docId, {
+    const updateData = {
       content: JSON.stringify(content),
       updatedAt: new Date()
-    });
+    };
+    
+    // Only update title if provided
+    if (title) {
+      updateData.title = title;
+    }
+    
+    await db.documents.update(docId, updateData);
   } catch (error) {
     console.error('Error saving document:', error);
   }

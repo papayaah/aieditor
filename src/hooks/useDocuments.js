@@ -27,27 +27,62 @@ export const useDocuments = () => {
     if (doc.title && doc.title !== 'Untitled Document') {
       return doc.title;
     }
-    const content = JSON.parse(doc.content || '[]');
-    if (content.length > 0 && content[0].content) {
-      const firstBlock = content[0].content;
-      if (Array.isArray(firstBlock) && firstBlock.length > 0) {
-        return firstBlock[0].text || 'Untitled';
+    
+    // Parse content - handle both string and array
+    let content;
+    if (typeof doc.content === 'string') {
+      content = JSON.parse(doc.content || '[]');
+    } else {
+      content = doc.content || [];
+    }
+    
+    // Extract text from first block
+    if (content.length > 0) {
+      const firstBlock = content[0];
+      
+      // Check if block has content array with text
+      if (firstBlock.content && Array.isArray(firstBlock.content)) {
+        const textContent = firstBlock.content
+          .filter(item => item.type === 'text' && item.text)
+          .map(item => item.text)
+          .join('');
+        
+        if (textContent.trim()) {
+          return textContent.trim();
+        }
       }
     }
+    
     return 'Untitled';
   };
 
   const handleSave = async (content) => {
     if (!currentDocId) return;
-    await saveDocument(currentDocId, content);
-    const updatedDocs = documents.map(doc => {
-      if (doc.id === currentDocId) {
-        const title = getDocTitle({ ...doc, content: JSON.stringify(content) });
-        return { ...doc, title, content: JSON.stringify(content) };
+    
+    // Extract title directly from the new content
+    let title = 'Untitled';
+    if (content.length > 0 && content[0].content && Array.isArray(content[0].content)) {
+      const textContent = content[0].content
+        .filter(item => item.type === 'text' && item.text)
+        .map(item => item.text)
+        .join('');
+      
+      if (textContent.trim()) {
+        title = textContent.trim();
       }
-      return doc;
-    });
-    setDocuments(updatedDocs);
+    }
+    
+    // Save to database with title
+    await saveDocument(currentDocId, content, title);
+    
+    // Update local state - create new array to trigger re-render
+    setDocuments(prevDocs => 
+      prevDocs.map(doc => 
+        doc.id === currentDocId 
+          ? { ...doc, title, content: JSON.stringify(content), updatedAt: new Date() }
+          : doc
+      )
+    );
   };
 
   const handleNewDocument = async () => {

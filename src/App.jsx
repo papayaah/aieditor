@@ -50,7 +50,6 @@ function App() {
     showSidebar,
     setShowSidebar,
     darkMode,
-    setDarkMode,
     docInfoCollapsed,
     setDocInfoCollapsed,
   } = useSettings();
@@ -61,23 +60,8 @@ function App() {
     setShowAiModal,
   } = useAI();
 
-  const exportToPdf = async () => {
-    if (!currentDocId || !exportPdfRef.current) return;
-    
-    try {
-      const currentDoc = documents.find(doc => doc.id === currentDocId);
-      const docTitle = getDocTitle(currentDoc) || 'document';
-      await exportPdfRef.current(docTitle);
-    } catch (error) {
-      console.error('Error exporting to PDF:', error);
-      alert('Failed to export PDF. Please try again.');
-    }
-  };
-
-
-
   if (!currentDocId) {
-    return <div className="loading">Loading...</div>;
+    return <Shell />;
   }
 
   return (
@@ -116,9 +100,10 @@ function App() {
           showMarkdown={showMarkdown}
           onToggleMarkdown={() => toggleMarkdown(currentDocId)}
           onCopyMarkdown={copyMarkdown}
-          onExportPdf={exportToPdf}
-          darkMode={darkMode}
-          onToggleDarkMode={() => setDarkMode(!darkMode)}
+          exportPdfRef={exportPdfRef}
+          currentDocId={currentDocId}
+          documents={documents}
+          getDocTitle={getDocTitle}
           aiAvailable={aiAvailable}
           onShowAiModal={() => setShowAiModal(true)}
         />

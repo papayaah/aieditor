@@ -15,17 +15,8 @@ export const Sidebar = ({
   onToggleDocInfo
 }) => {
   const getDocTitle = (doc) => {
-    if (doc.title && doc.title !== 'Untitled Document') {
-      return doc.title;
-    }
-    const content = JSON.parse(doc.content || '[]');
-    if (content.length > 0 && content[0].content) {
-      const firstBlock = content[0].content;
-      if (Array.isArray(firstBlock) && firstBlock.length > 0) {
-        return firstBlock[0].text || 'Untitled';
-      }
-    }
-    return 'Untitled';
+    // Use the saved title directly
+    return doc.title || 'Untitled';
   };
 
   const formatDate = (date) => {
