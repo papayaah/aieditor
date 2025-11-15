@@ -2,39 +2,119 @@ import { useState, useEffect } from 'react';
 import { Sparkles, Copy, Check, RefreshCw, HelpCircle } from 'lucide-react';
 import { useRewriter } from '../../hooks/useRewriter';
 import { useWriter } from '../../hooks/useWriter';
+import { getAllPostEntries, savePostEntry } from '../../hooks/usePostEntries';
 import './PostHelper.css';
 
-export const PostHelper = ({ onNewPost, onSettingsExport }) => {
+export const PostHelper = ({ 
+  currentEntryId,
+  onEntrySaved,
+  onSettingsExport,
+  onNewEntry
+}) => {
   const [inputText, setInputText] = useState('');
-  const [history, setHistory] = useState([]); // Array of { id, text, suggestions: ['', '', ''], isGenerating }
+  const [currentEntry, setCurrentEntry] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [lastGeneratedText, setLastGeneratedText] = useState('');
 
-  // Handle new post from sidebar
+  // Load current entry when it changes
   useEffect(() => {
-    if (onNewPost) {
-      window.handleNewPost = () => {
+    const loadCurrentEntry = async () => {
+      if (!currentEntryId) {
+        setCurrentEntry(null);
         setInputText('');
-        setHistory([]);
         setLastGeneratedText('');
-      };
-    }
-    return () => {
-      if (window.handleNewPost) {
-        delete window.handleNewPost;
+        return;
+      }
+      
+      const allEntries = await getAllPostEntries();
+      const entry = allEntries.find(e => e.id === currentEntryId);
+      
+      if (entry) {
+        setCurrentEntry(entry);
+        setInputText(entry.text || '');
+        setLastGeneratedText(entry.text || '');
+        
+        // Restore settings from entry if they exist
+        if (entry.settings) {
+          const savedSettings = entry.settings;
+          if (savedSettings.apiMode) setApiMode(savedSettings.apiMode);
+          if (savedSettings.tone) setTone(savedSettings.tone);
+          if (savedSettings.format) setFormat(savedSettings.format);
+          if (savedSettings.length) setLength(savedSettings.length);
+          if (savedSettings.style) setStyle(savedSettings.style);
+          if (savedSettings.customStyle !== undefined) setCustomStyle(savedSettings.customStyle);
+          if (savedSettings.useEmoticons !== undefined) setUseEmoticons(savedSettings.useEmoticons);
+          if (savedSettings.stream !== undefined) setStream(savedSettings.stream);
+        }
+      } else {
+        setCurrentEntry(null);
+        setInputText('');
+        setLastGeneratedText('');
       }
     };
-  }, [onNewPost]);
+    
+    loadCurrentEntry();
+  }, [currentEntryId]);
+
+  // Save entry when it changes
+  useEffect(() => {
+    const saveCurrentEntry = async () => {
+      if (!currentEntry || !currentEntryId) return;
+      
+      // Only save if entry has content
+      if (currentEntry.text || (currentEntry.suggestions && currentEntry.suggestions.some(s => s && s.trim().length > 0))) {
+        await savePostEntry(currentEntry);
+        if (onEntrySaved) {
+          onEntrySaved();
+        }
+      }
+    };
+    
+    if (currentEntry && !currentEntry.isGenerating) {
+      // Debounce saves
+      const timeoutId = setTimeout(() => {
+        saveCurrentEntry();
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [currentEntry, currentEntryId, onEntrySaved]);
+
+  // Don't update currentEntry.text while typing - only update when submitting
+  // This keeps the original submission text separate from the input text area
   const [tone, setTone] = useState(() => {
     try {
       const stored = localStorage.getItem('postHelperTone');
-      // Migrate old values to new format
-      if (stored === 'casual') return 'more-casual';
-      if (stored === 'formal') return 'more-formal';
-      if (stored === 'neutral') return 'as-is';
-      return stored || 'more-casual';
+      const apiMode = localStorage.getItem('postHelperApiMode') || 'writer';
+      
+      // If no stored value, use default based on API mode
+      if (!stored) {
+        return apiMode === 'writer' ? 'neutral' : 'as-is';
+      }
+      
+      // Validate stored value based on current API mode
+      if (apiMode === 'writer') {
+        if (['casual', 'neutral', 'formal'].includes(stored)) {
+          return stored;
+        }
+        // Migrate from Rewriter format
+        if (stored === 'more-casual') return 'casual';
+        if (stored === 'more-formal') return 'formal';
+        if (stored === 'as-is') return 'neutral';
+        return 'neutral';
+      } else {
+        if (['more-casual', 'as-is', 'more-formal'].includes(stored)) {
+          return stored;
+        }
+        // Migrate from Writer format
+        if (stored === 'casual') return 'more-casual';
+        if (stored === 'formal') return 'more-formal';
+        if (stored === 'neutral') return 'as-is';
+        return 'as-is';
+      }
     } catch {
-      return 'more-casual';
+      const apiMode = localStorage.getItem('postHelperApiMode') || 'writer';
+      return apiMode === 'writer' ? 'neutral' : 'as-is';
     }
   });
   const [useEmoticons, setUseEmoticons] = useState(() => {
@@ -115,26 +195,106 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
     rewriteText,
   } = useRewriter();
 
+  // Manage format and length separately to support both APIs
+  const [format, setFormat] = useState(() => {
+    try {
+      const stored = localStorage.getItem('postHelperFormat');
+      const apiMode = localStorage.getItem('postHelperApiMode') || 'writer';
+      if (!stored) {
+        return apiMode === 'writer' ? 'markdown' : 'as-is';
+      }
+      // Validate based on API mode
+      if (apiMode === 'writer') {
+        return ['markdown', 'plain-text'].includes(stored) ? stored : 'markdown';
+      } else {
+        return ['as-is', 'markdown', 'plain-text'].includes(stored) ? stored : 'as-is';
+      }
+    } catch {
+      const apiMode = localStorage.getItem('postHelperApiMode') || 'writer';
+      return apiMode === 'writer' ? 'markdown' : 'as-is';
+    }
+  });
+
+  const [length, setLength] = useState(() => {
+    try {
+      const stored = localStorage.getItem('postHelperLength');
+      const apiMode = localStorage.getItem('postHelperApiMode') || 'writer';
+      if (!stored) {
+        return apiMode === 'writer' ? 'short' : 'as-is';
+      }
+      // Validate based on API mode
+      if (apiMode === 'writer') {
+        return ['short', 'medium', 'long'].includes(stored) ? stored : 'short';
+      } else {
+        return ['shorter', 'as-is', 'longer'].includes(stored) ? stored : 'as-is';
+      }
+    } catch {
+      const apiMode = localStorage.getItem('postHelperApiMode') || 'writer';
+      return apiMode === 'writer' ? 'short' : 'as-is';
+    }
+  });
+
   const {
     writerAvailable,
     tone: writerTone,
     setTone: setWriterTone,
-    format,
-    setFormat,
-    length,
-    setLength,
+    format: writerFormat,
+    setFormat: setWriterFormat,
+    length: writerLength,
+    setLength: setWriterLength,
     generateText,
   } = useWriter('postHelper');
+
+  // Sync format and length with Writer hook when in Writer mode
+  useEffect(() => {
+    if (apiMode === 'writer') {
+      if (format !== writerFormat) {
+        setWriterFormat(format);
+      }
+      if (length !== writerLength) {
+        setWriterLength(length);
+      }
+    }
+  }, [apiMode, format, length, writerFormat, writerLength, setWriterFormat, setWriterLength]);
 
   const aiAvailable = apiMode === 'writer' ? writerAvailable : rewriterAvailable;
   
   // Track if any generation is in progress
-  const isGenerating = history.length > 0 && history[0].isGenerating;
+  const isGenerating = currentEntry?.isGenerating || false;
 
-  // Convert length values when switching between APIs
+  // Save format and length to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('postHelperFormat', format);
+    } catch {}
+  }, [format]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('postHelperLength', length);
+    } catch {}
+  }, [length]);
+
+  // Convert values when switching between APIs
   useEffect(() => {
     if (apiMode === 'writer') {
-      // Convert Rewriter lengths to Writer lengths
+      // Convert Rewriter values to Writer values
+      
+      // Convert tone
+      if (tone === 'more-casual') setTone('casual');
+      else if (tone === 'more-formal') setTone('formal');
+      else if (tone === 'as-is') setTone('neutral');
+      else if (!['casual', 'neutral', 'formal'].includes(tone)) {
+        setTone('neutral');
+      }
+      
+      // Convert format
+      if (format === 'as-is') setFormat('markdown');
+      else if (!['markdown', 'plain-text'].includes(format)) {
+        setFormat('markdown');
+      }
+      
+      // Convert length
       if (length === 'shorter') setLength('short');
       else if (length === 'longer') setLength('long');
       else if (length === 'as-is') setLength('medium');
@@ -142,7 +302,22 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
         setLength('short');
       }
     } else {
-      // Convert Writer lengths to Rewriter lengths
+      // Convert Writer values to Rewriter values
+      
+      // Convert tone
+      if (tone === 'casual') setTone('more-casual');
+      else if (tone === 'formal') setTone('more-formal');
+      else if (tone === 'neutral') setTone('as-is');
+      else if (!['more-casual', 'as-is', 'more-formal'].includes(tone)) {
+        setTone('as-is');
+      }
+      
+      // Convert format
+      if (!['as-is', 'markdown', 'plain-text'].includes(format)) {
+        setFormat('as-is');
+      }
+      
+      // Convert length
       if (length === 'short') setLength('shorter');
       else if (length === 'long') setLength('longer');
       else if (length === 'medium') setLength('as-is');
@@ -249,63 +424,176 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
     }
   }, [tone, apiMode, setWriterTone]);
 
-  // Generate suggestions when user completes a sentence and stops typing
-  useEffect(() => {
-    const trimmedText = inputText.trim();
-    
-    // Don't do anything if text doesn't end with punctuation
-    if (!trimmedText || !/[.!?]$/.test(trimmedText)) {
-      return;
-    }
+  // Manual submission only - no automatic triggers
 
-    // Don't regenerate if the text hasn't actually changed
-    if (trimmedText === lastGeneratedText) {
-      return;
-    }
-
-    // Debounce: wait for user to stop typing for 2 seconds
-    const timeoutId = setTimeout(() => {
-      generateSuggestions(trimmedText);
-      setLastGeneratedText(trimmedText);
-    }, 2000);
-
-    return () => clearTimeout(timeoutId);
-  }, [inputText, lastGeneratedText]);
-
-  const generateSuggestions = async (text, regenerateEntryId = null) => {
+  const generateSuggestions = async (text, targetEntryId = null, forceNewSubmission = false) => {
     if (!aiAvailable) return;
 
-    try {
-      // Create new history entry with skeleton or update existing one
-      const entryId = regenerateEntryId || Date.now();
-      const newEntry = {
-        id: entryId,
-        text: text,
-        suggestions: ['', '', ''],
-        isGenerating: true,
-        settings: {
-          apiMode,
-          tone,
-          writerTone,
-          format,
-          length,
-          style,
-          customStyle,
-          useEmoticons,
-          stream,
-        },
-      };
+    // Use provided entryId or currentEntryId
+    const entryId = targetEntryId || currentEntryId;
+    if (!entryId) return;
+    
+    // Create generation ID at the start so it's accessible in callbacks
+    const newGenerationId = Date.now();
 
-      if (regenerateEntryId) {
-        // Update existing entry
-        setHistory(prev => 
-          prev.map(entry => 
-            entry.id === regenerateEntryId ? newEntry : entry
-          )
-        );
+    try {
+      // Load the entry we're generating for (could be current or new)
+      const loadedEntries = await getAllPostEntries();
+      let entryToUpdate = loadedEntries.find(e => e.id === entryId);
+      
+      // If entry doesn't exist, create a new one
+      if (!entryToUpdate) {
+        entryToUpdate = {
+          id: entryId,
+          text: '',
+          suggestions: [],
+          settings: {},
+          isGenerating: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      }
+      
+      // Store multiple submissions - each submission has text, settings, and generations
+      // Structure: submissions = [{ id, text, settings, generations: [{ suggestions, isGenerating, timestamp }], timestamp }, ...]
+      const existingSubmissions = Array.isArray(entryToUpdate.submissions) ? entryToUpdate.submissions : [];
+      
+      // If we have old-style data, convert to new format
+      if (!existingSubmissions.length && entryToUpdate.text && Array.isArray(entryToUpdate.suggestions) && entryToUpdate.suggestions.some(s => s && s.trim())) {
+        existingSubmissions.push({
+          id: Date.now() - 1000,
+          text: entryToUpdate.text,
+          settings: entryToUpdate.settings || {},
+          generations: [{
+            id: Date.now() - 500,
+            suggestions: entryToUpdate.suggestions,
+            isGenerating: false,
+            timestamp: entryToUpdate.updatedAt || new Date()
+          }],
+          timestamp: entryToUpdate.updatedAt || new Date()
+        });
+      }
+      
+      // Get current settings
+      const currentSettings = {
+        apiMode,
+        tone,
+        writerTone,
+        format,
+        length,
+        style,
+        customStyle,
+        useEmoticons,
+        stream,
+      };
+      
+      // Determine if we should create a new submission
+      // Rule 1: Cmd+Enter/Shift+Enter always creates new submission (forceNewSubmission = true)
+      // Rule 3: Regenerate with same settings adds generation to existing submission (forceNewSubmission = false)
+      // Rule 4: Regenerate with new settings creates new submission (forceNewSubmission = true)
+      const lastSubmission = existingSubmissions[0];
+      let shouldCreateNewSubmission = forceNewSubmission;
+      
+      // Normalize settings for comparison (exclude writerTone since it's derived from tone)
+      const normalizeSettings = (settings) => {
+        const normalized = { ...settings };
+        delete normalized.writerTone;
+        return normalized;
+      };
+      
+      // If not forced, check if settings changed from last submission
+      if (!shouldCreateNewSubmission && lastSubmission) {
+        shouldCreateNewSubmission = 
+          JSON.stringify(normalizeSettings(lastSubmission.settings)) !== 
+          JSON.stringify(normalizeSettings(currentSettings));
+      }
+      
+      const newGenerationId = Date.now();
+      
+      if (shouldCreateNewSubmission) {
+        // Create a new submission (Rule 1: Cmd+Enter/Shift+Enter, Rule 4: Regenerate with new settings)
+        const newSubmission = {
+          id: Date.now(),
+          text: text,
+          settings: currentSettings,
+          generations: [{
+            id: newGenerationId,
+            suggestions: ['', '', ''],
+            isGenerating: true,
+            timestamp: new Date()
+          }],
+          timestamp: new Date()
+        };
+        
+        const updatedSubmissions = [newSubmission, ...existingSubmissions];
+        
+        const updatedEntry = {
+          ...entryToUpdate,
+          id: entryId,
+          text: text, // Keep for backward compatibility
+          submissions: updatedSubmissions,
+          // Keep old format for backward compatibility
+          suggestions: newSubmission.generations[0].suggestions,
+          isGenerating: true,
+          settings: currentSettings,
+        };
+        
+        await savePostEntry(updatedEntry);
+        
+        // Reload from database to ensure we have the latest data
+        const reloadedEntries = await getAllPostEntries();
+        const reloadedEntry = reloadedEntries.find(e => e.id === entryId);
+        
+        if (entryId === currentEntryId && reloadedEntry) {
+          setCurrentEntry(reloadedEntry);
+        }
+        
+        // Notify parent to refresh entries list
+        if (onEntrySaved) {
+          onEntrySaved();
+        }
       } else {
-        // Add to history at the top
-        setHistory(prev => [newEntry, ...prev]);
+        // Add a new generation to the existing submission (Rule 3: Regenerate with same settings)
+        const updatedSubmissions = existingSubmissions.map((submission, index) => {
+          if (index === 0) {
+            // Add new generation to the first (most recent) submission
+            return {
+              ...submission,
+              generations: [{
+                id: newGenerationId,
+                suggestions: ['', '', ''],
+                isGenerating: true,
+                timestamp: new Date()
+              }, ...submission.generations]
+            };
+          }
+          return submission;
+        });
+        
+        const updatedEntry = {
+          ...entryToUpdate,
+          id: entryId,
+          submissions: updatedSubmissions,
+          // Keep old format for backward compatibility
+          suggestions: updatedSubmissions[0].generations[0].suggestions,
+          isGenerating: true,
+          settings: currentSettings,
+        };
+        
+        await savePostEntry(updatedEntry);
+        
+        // Reload from database to ensure we have the latest data
+        const reloadedEntries = await getAllPostEntries();
+        const reloadedEntry = reloadedEntries.find(e => e.id === entryId);
+        
+        if (entryId === currentEntryId && reloadedEntry) {
+          setCurrentEntry(reloadedEntry);
+        }
+        
+        // Notify parent to refresh entries list
+        if (onEntrySaved) {
+          onEntrySaved();
+        }
       }
 
       if (apiMode === 'writer') {
@@ -341,7 +629,7 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
           ? customStyle.trim()
           : (styleInstructions[style] || '');
         
-        const sharedContext = `${emoticonInstruction} This is a social post. ${styleInstruction}`;
+        const sharedContext = `${emoticonInstruction} You will rewrite what the user provides for social media. ${styleInstruction}`;
         
         // Wrap the user's text to make it clear it's content to rewrite, not a question to answer
         const prompts = [
@@ -353,41 +641,164 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
         console.log('=== Writer API ===');
         console.log('Shared Context:', sharedContext);
         console.log('User Text:', text);
-        console.log('Settings:', { tone: writerTone, length, format });
+        console.log('Settings:', { tone: writerTone, length: writerLength, format: writerFormat });
+        console.log('Local state:', { tone, length, format });
+
+        // Ensure Writer hook state is synced before generating
+        if (format !== writerFormat) {
+          setWriterFormat(format);
+        }
+        if (length !== writerLength) {
+          setWriterLength(length);
+        }
+        // Wait a tick for state to sync
+        await new Promise(resolve => setTimeout(resolve, 50));
 
         // Start all 3 generations in parallel
         // Note: Chrome AI API queues these internally, so they complete sequentially
         const results = await Promise.all(
-          prompts.map((prompt, index) => 
-            generateText(prompt, sharedContext, !useEmoticons, stream ? (streamedText) => {
-              setHistory(prev => 
-                prev.map(entry => 
-                  entry.id === entryId
-                    ? {
-                        ...entry,
-                        suggestions: entry.suggestions.map((s, i) => 
-                          i === index ? streamedText.trim() : s
-                        ),
+          prompts.map(async (prompt, index) => {
+            try {
+              return await generateText(prompt, sharedContext, !useEmoticons, stream ? (streamedText) => {
+              // Update the current generation during streaming (in submissions structure)
+              if (entryId === currentEntryId) {
+                setCurrentEntry(prev => {
+                  if (prev && prev.id === entryId) {
+                    const submissions = Array.isArray(prev.submissions) ? prev.submissions : [];
+                    const updatedSubmissions = submissions.map((submission, subIndex) => {
+                      if (subIndex === 0) {
+                        // Update the first (most recent) submission
+                        const generations = Array.isArray(submission.generations) ? submission.generations : [];
+                        const updatedGenerations = generations.map(gen => {
+                          if (gen.id === newGenerationId) {
+                            const currentSuggestions = Array.isArray(gen.suggestions) ? gen.suggestions : ['', '', ''];
+                            return {
+                              ...gen,
+                              suggestions: currentSuggestions.map((s, i) => 
+                                i === index ? streamedText.trim() : s
+                              ),
+                            };
+                          }
+                          return gen;
+                        });
+                        return {
+                          ...submission,
+                          generations: updatedGenerations
+                        };
                       }
-                    : entry
-                )
-              );
-            } : null)
-          )
+                      return submission;
+                    });
+                    return {
+                      ...prev,
+                      submissions: updatedSubmissions,
+                      suggestions: updatedSubmissions[0]?.generations[0]?.suggestions || ['', '', '']
+                    };
+                  }
+                  return prev;
+                });
+              }
+              
+              // Also save to database
+              getAllPostEntries().then(entries => {
+                const entry = entries.find(e => e.id === entryId);
+                if (entry) {
+                  const submissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+                  const updatedSubmissions = submissions.map((submission, subIndex) => {
+                    if (subIndex === 0) {
+                      const generations = Array.isArray(submission.generations) ? submission.generations : [];
+                      const updatedGenerations = generations.map(gen => {
+                        if (gen.id === newGenerationId) {
+                          const currentSuggestions = Array.isArray(gen.suggestions) ? gen.suggestions : ['', '', ''];
+                          return {
+                            ...gen,
+                            suggestions: currentSuggestions.map((s, i) => 
+                              i === index ? streamedText.trim() : s
+                            ),
+                          };
+                        }
+                        return gen;
+                      });
+                      return {
+                        ...submission,
+                        generations: updatedGenerations
+                      };
+                    }
+                    return submission;
+                  });
+                  const updatedEntry = {
+                    ...entry,
+                    submissions: updatedSubmissions,
+                    suggestions: updatedSubmissions[0]?.generations[0]?.suggestions || ['', '', '']
+                  };
+                  savePostEntry(updatedEntry);
+                }
+              });
+            } : null);
+            } catch (error) {
+              console.error(`Error generating suggestion ${index + 1}:`, error);
+              return '';
+            }
+          })
         );
+
+        console.log('Writer API results:', results);
+
+        // Update entry with results - update the current generation in submissions structure
+        const updateEntryWithResults = async () => {
+          const allEntries = await getAllPostEntries();
+          const entry = allEntries.find(e => e.id === entryId);
+          if (entry) {
+            const newSuggestions = results.map(r => (r || '').trim());
+            const submissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+            const updatedSubmissions = submissions.map((submission, subIndex) => {
+              if (subIndex === 0) {
+                // Update the first (most recent) submission
+                const generations = Array.isArray(submission.generations) ? submission.generations : [];
+                const updatedGenerations = generations.map(gen => {
+                  if (gen.id === newGenerationId) {
+                    return {
+                      ...gen,
+                      suggestions: newSuggestions,
+                      isGenerating: false
+                    };
+                  }
+                  return gen;
+                });
+                return {
+                  ...submission,
+                  generations: updatedGenerations
+                };
+              }
+              return submission;
+            });
+            
+            const updatedEntry = {
+              ...entry,
+              text: text, // Keep for backward compatibility
+              submissions: updatedSubmissions,
+              suggestions: updatedSubmissions[0]?.generations[0]?.suggestions || newSuggestions,
+              isGenerating: false
+            };
+            await savePostEntry(updatedEntry);
+            
+            // Only update currentEntry if this is the current entry
+            if (entryId === currentEntryId) {
+              setCurrentEntry(updatedEntry);
+            }
+            
+            // Reload entries list
+            if (onEntrySaved) {
+              onEntrySaved();
+            }
+          }
+        };
 
         // If streaming is off, update with final results
         if (!stream) {
-          setHistory(prev => 
-            prev.map(entry => 
-              entry.id === entryId
-                ? {
-                    ...entry,
-                    suggestions: results.map(r => r.trim()),
-                  }
-                : entry
-            )
-          );
+          await updateEntryWithResults();
+        } else {
+          // For streaming, ensure we update with final results after streaming completes
+          await updateEntryWithResults();
         }
       } else {
         // Use Rewriter API
@@ -434,47 +845,193 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
           [0, 1, 2].map((index) => {
             console.log(`Starting Rewriter generation ${index + 1}`);
             return rewriteText(text, tone, format, length, sharedContext, !useEmoticons, stream ? (streamedText) => {
-              setHistory(prev => 
-                prev.map(entry => 
-                  entry.id === entryId
-                    ? {
-                        ...entry,
-                        suggestions: entry.suggestions.map((s, i) => 
-                          i === index ? streamedText.trim() : s
-                        ),
+              // Update the current generation during streaming (in submissions structure)
+              if (entryId === currentEntryId) {
+                setCurrentEntry(prev => {
+                  if (prev && prev.id === entryId) {
+                    const submissions = Array.isArray(prev.submissions) ? prev.submissions : [];
+                    const updatedSubmissions = submissions.map((submission, subIndex) => {
+                      if (subIndex === 0) {
+                        // Update the first (most recent) submission
+                        const generations = Array.isArray(submission.generations) ? submission.generations : [];
+                        const updatedGenerations = generations.map(gen => {
+                          if (gen.id === newGenerationId) {
+                            const currentSuggestions = Array.isArray(gen.suggestions) ? gen.suggestions : ['', '', ''];
+                            return {
+                              ...gen,
+                              suggestions: currentSuggestions.map((s, i) => 
+                                i === index ? streamedText.trim() : s
+                              ),
+                            };
+                          }
+                          return gen;
+                        });
+                        return {
+                          ...submission,
+                          generations: updatedGenerations
+                        };
                       }
-                    : entry
-                )
-              );
+                      return submission;
+                    });
+                    return {
+                      ...prev,
+                      submissions: updatedSubmissions,
+                      suggestions: updatedSubmissions[0]?.generations[0]?.suggestions || ['', '', '']
+                    };
+                  }
+                  return prev;
+                });
+              }
+              
+              // Also save to database
+              getAllPostEntries().then(entries => {
+                const entry = entries.find(e => e.id === entryId);
+                if (entry) {
+                  const submissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+                  const updatedSubmissions = submissions.map((submission, subIndex) => {
+                    if (subIndex === 0) {
+                      const generations = Array.isArray(submission.generations) ? submission.generations : [];
+                      const updatedGenerations = generations.map(gen => {
+                        if (gen.id === newGenerationId) {
+                          const currentSuggestions = Array.isArray(gen.suggestions) ? gen.suggestions : ['', '', ''];
+                          return {
+                            ...gen,
+                            suggestions: currentSuggestions.map((s, i) => 
+                              i === index ? streamedText.trim() : s
+                            ),
+                          };
+                        }
+                        return gen;
+                      });
+                      return {
+                        ...submission,
+                        generations: updatedGenerations
+                      };
+                    }
+                    return submission;
+                  });
+                  const updatedEntry = {
+                    ...entry,
+                    submissions: updatedSubmissions,
+                    suggestions: updatedSubmissions[0]?.generations[0]?.suggestions || ['', '', '']
+                  };
+                  savePostEntry(updatedEntry);
+                }
+              });
             } : null);
           })
         );
 
         console.log('Rewriter results:', results);
 
+        // Update entry with results - update the current generation in submissions structure
+        const updateEntryWithResults = async () => {
+          const allEntries = await getAllPostEntries();
+          const entry = allEntries.find(e => e.id === entryId);
+          if (entry) {
+            const newSuggestions = results.map(r => (r || '').trim());
+            const submissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+            const updatedSubmissions = submissions.map((submission, subIndex) => {
+              if (subIndex === 0) {
+                // Update the first (most recent) submission
+                const generations = Array.isArray(submission.generations) ? submission.generations : [];
+                const updatedGenerations = generations.map(gen => {
+                  if (gen.id === newGenerationId) {
+                    return {
+                      ...gen,
+                      suggestions: newSuggestions,
+                      isGenerating: false
+                    };
+                  }
+                  return gen;
+                });
+                return {
+                  ...submission,
+                  generations: updatedGenerations
+                };
+              }
+              return submission;
+            });
+            
+            const updatedEntry = {
+              ...entry,
+              text: text, // Keep for backward compatibility
+              submissions: updatedSubmissions,
+              suggestions: updatedSubmissions[0]?.generations[0]?.suggestions || newSuggestions,
+              isGenerating: false
+            };
+            await savePostEntry(updatedEntry);
+            
+            // Only update currentEntry if this is the current entry
+            if (entryId === currentEntryId) {
+              setCurrentEntry(updatedEntry);
+            }
+            
+            // Reload entries list
+            if (onEntrySaved) {
+              onEntrySaved();
+            }
+          }
+        };
+
         // If streaming is off, update with final results
         if (!stream) {
-          setHistory(prev => 
-            prev.map(entry => 
-              entry.id === entryId
-                ? {
-                    ...entry,
-                    suggestions: results.map(r => r.trim()),
-                  }
-                : entry
-            )
-          );
+          await updateEntryWithResults();
+        } else {
+          // For streaming, ensure we update with final results after streaming completes
+          await updateEntryWithResults();
         }
       }
 
-      // Mark as complete
-      setHistory(prev => 
-        prev.map(entry => 
-          entry.id === entryId ? { ...entry, isGenerating: false } : entry
-        )
-      );
+      // Mark generation as complete in submissions structure
+      const finalEntries = await getAllPostEntries();
+      const entry = finalEntries.find(e => e.id === entryId);
+      if (entry) {
+        const submissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+        const updatedSubmissions = submissions.map((submission, subIndex) => {
+          if (subIndex === 0) {
+            // Update the first (most recent) submission
+            const generations = Array.isArray(submission.generations) ? submission.generations : [];
+            const updatedGenerations = generations.map(gen => {
+              if (gen.id === newGenerationId) {
+                return { ...gen, isGenerating: false };
+              }
+              return gen;
+            });
+            return {
+              ...submission,
+              generations: updatedGenerations
+            };
+          }
+          return submission;
+        });
+        
+        const updatedEntry = {
+          ...entry,
+          submissions: updatedSubmissions,
+          isGenerating: updatedSubmissions[0]?.generations.some(gen => gen.isGenerating) || false
+        };
+        await savePostEntry(updatedEntry);
+        
+        // Only update currentEntry if this is the current entry
+        if (entryId === currentEntryId) {
+          setCurrentEntry(updatedEntry);
+        }
+        
+        // Reload entries list
+        if (onEntrySaved) {
+          onEntrySaved();
+        }
+      }
     } catch (error) {
       console.error('Failed to generate suggestions:', error);
+      // Mark as not generating on error
+      setCurrentEntry(prev => {
+        if (prev && prev.id === entryId) {
+          return { ...prev, isGenerating: false };
+        }
+        return prev;
+      });
     }
   };
 
@@ -484,30 +1041,95 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleRegenerate = async (entry) => {
-    if (isGenerating) return;
+  const handleRegenerate = async () => {
+    if (isGenerating || !currentEntry) return;
 
-    // Only restore settings if useCurrentSettings is false
-    if (!useCurrentSettings) {
-      const savedSettings = entry.settings;
-      if (savedSettings) {
-        setApiMode(savedSettings.apiMode);
-        setTone(savedSettings.tone);
-        if (savedSettings.format) setFormat(savedSettings.format);
-        setLength(savedSettings.length);
-        if (savedSettings.style) setStyle(savedSettings.style);
-        if (savedSettings.customStyle) setCustomStyle(savedSettings.customStyle);
-        setUseEmoticons(savedSettings.useEmoticons);
-        setStream(savedSettings.stream);
+    // Rule 3: Regenerate with same settings - adds new generation to existing submission
+    // Rule 4: Regenerate with new settings - creates new submission within same post
+    let forceNewSubmission = false;
+    
+    if (useCurrentSettings) {
+      // If "Use current settings" is checked, compare current settings with last submission's settings
+      const allEntries = await getAllPostEntries();
+      const entry = allEntries.find(e => e.id === currentEntryId);
+      if (entry) {
+        const existingSubmissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+        const lastSubmission = existingSubmissions[0];
         
-        // Wait a tick for state to update
-        await new Promise(resolve => setTimeout(resolve, 0));
+        if (lastSubmission) {
+          const currentSettings = {
+            apiMode,
+            tone,
+            writerTone,
+            format,
+            length,
+            style,
+            customStyle,
+            useEmoticons,
+            stream,
+          };
+          
+          // Normalize settings for comparison (exclude writerTone since it's derived from tone)
+          const normalizeSettings = (settings) => {
+            const normalized = { ...settings };
+            delete normalized.writerTone;
+            return normalized;
+          };
+          
+          // Check if any settings have changed from last submission
+          const settingsChanged = 
+            JSON.stringify(normalizeSettings(lastSubmission.settings)) !== 
+            JSON.stringify(normalizeSettings(currentSettings));
+          
+          if (settingsChanged) {
+            // Rule 4: Settings changed - create new submission within same post
+            forceNewSubmission = true;
+          }
+          // If settings haven't changed, just add a new generation (forceNewSubmission stays false)
+        }
+      }
+    } else {
+      // If "Use current settings" is unchecked, restore original settings from last submission
+      const allEntries = await getAllPostEntries();
+      const entry = allEntries.find(e => e.id === currentEntryId);
+      if (entry) {
+        const existingSubmissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+        const lastSubmission = existingSubmissions[0];
+        
+        if (lastSubmission && lastSubmission.settings) {
+          const savedSettings = lastSubmission.settings;
+          setApiMode(savedSettings.apiMode);
+          setTone(savedSettings.tone);
+          if (savedSettings.format) setFormat(savedSettings.format);
+          setLength(savedSettings.length);
+          if (savedSettings.style) setStyle(savedSettings.style);
+          if (savedSettings.customStyle !== undefined) setCustomStyle(savedSettings.customStyle);
+          setUseEmoticons(savedSettings.useEmoticons);
+          setStream(savedSettings.stream);
+          
+          // Wait a tick for state to update
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      // Just add a new generation (forceNewSubmission stays false)
+    }
+
+    // Always regenerate within the same post (never create new sidebar entry)
+    // Rule 2: New sidebar entry only happens when user clicks "New" button
+    // Get text from last submission, or fall back to currentEntry.text or inputText
+    const allEntries = await getAllPostEntries();
+    const entry = allEntries.find(e => e.id === currentEntryId);
+    let textToRegenerate = currentEntry.text || inputText.trim();
+    
+    if (entry) {
+      const existingSubmissions = Array.isArray(entry.submissions) ? entry.submissions : [];
+      const lastSubmission = existingSubmissions[0];
+      if (lastSubmission && lastSubmission.text) {
+        textToRegenerate = lastSubmission.text;
       }
     }
-    // If useCurrentSettings is true, just use whatever is currently in the sidebar
-
-    // Regenerate with the same text and entry ID
-    generateSuggestions(entry.text, entry.id);
+    
+    generateSuggestions(textToRegenerate, currentEntryId, forceNewSubmission);
   };
 
   if (!aiAvailable) {
@@ -534,16 +1156,18 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && inputText.trim()) {
+                if (e.key === 'Enter' && (e.shiftKey || e.metaKey) && inputText.trim()) {
                   e.preventDefault();
                   const trimmedText = inputText.trim();
-                  if (trimmedText && trimmedText !== lastGeneratedText) {
-                    generateSuggestions(trimmedText);
+                  if (trimmedText) {
+                    // Rule 1: Cmd+Enter/Shift+Enter always creates a new submission within the same post
+                    // Don't create a new sidebar entry - only "New Post" button does that
+                    generateSuggestions(trimmedText, currentEntryId, true);
                     setLastGeneratedText(trimmedText);
                   }
                 }
               }}
-              placeholder="Type your sentence here. Press Enter or end with . ! ? to get suggestions..."
+              placeholder="Type your text here. Press Shift+Enter or Cmd+Enter to generate suggestions..."
               rows={4}
               disabled={isGenerating}
             />
@@ -557,14 +1181,14 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
                 </span>
               </div>
               <div className="post-hint">
-                {inputText.trim() && !/[.!?]$/.test(inputText.trim()) && (
-                  <span>Press Enter or end with punctuation to get suggestions</span>
+                {inputText.trim() && (
+                  <span>Press Shift+Enter or Cmd+Enter to generate suggestions</span>
                 )}
               </div>
             </div>
           </div>
-          <div className="current-suggestions-placeholder">
-            {history.length === 0 && (
+            <div className="current-suggestions-placeholder">
+            {!currentEntry && (
               <div className="post-empty">
                 <Sparkles size={32} color="#e5e5e5" />
                 <p>Suggestions will appear here</p>
@@ -573,95 +1197,165 @@ export const PostHelper = ({ onNewPost, onSettingsExport }) => {
           </div>
         </div>
 
-        <div className="post-history">
-          {history.map((entry) => (
-            <div key={entry.id} className="history-row">
-              <div className="history-text-item">
-                <p>{entry.text}</p>
-                <div className="history-text-meta">
-                  <span className="char-count">
-                    {entry.text.length} chars
-                  </span>
-                  <span className="word-count">
-                    {entry.text.trim().split(/\s+/).length} words
-                  </span>
-                </div>
-                {entry.settings && (
-                  <div className="entry-settings">
-                    <span className="setting-badge">{entry.settings.apiMode === 'writer' ? 'Writer' : 'Rewriter'}</span>
-                    <span className="setting-badge">{entry.settings.tone}</span>
-                    {entry.settings.apiMode === 'writer' && (
-                      <span className="setting-badge">{entry.settings.length}</span>
+        {currentEntry && (() => {
+          // Get all submissions (most recent first)
+          const submissions = Array.isArray(currentEntry.submissions) ? currentEntry.submissions : [];
+          
+          // Convert old format to new format for display
+          let displaySubmissions = [...submissions];
+          if (displaySubmissions.length === 0) {
+            // Fallback to old format if no submissions
+            if (currentEntry.text && (
+              (Array.isArray(currentEntry.generations) && currentEntry.generations.length > 0) ||
+              (currentEntry.suggestions && currentEntry.suggestions.some(s => s && s.trim()))
+            )) {
+              displaySubmissions = [{
+                id: 'legacy',
+                text: currentEntry.text,
+                settings: currentEntry.settings || {},
+                generations: Array.isArray(currentEntry.generations) && currentEntry.generations.length > 0
+                  ? currentEntry.generations
+                  : (currentEntry.suggestions ? [{
+                      id: 'legacy-gen',
+                      suggestions: currentEntry.suggestions,
+                      isGenerating: currentEntry.isGenerating,
+                      timestamp: currentEntry.updatedAt || new Date()
+                    }] : []),
+                timestamp: currentEntry.updatedAt || new Date()
+              }];
+            }
+          }
+          
+          const hasContent = currentEntry.isGenerating || 
+            displaySubmissions.length > 0 ||
+            (currentEntry.text?.trim());
+          
+          // Get the most recent submission for regenerate controls
+          const lastSubmission = displaySubmissions[0];
+          const displaySettings = lastSubmission?.settings || currentEntry.settings;
+          
+          return hasContent && (
+            <div className="post-history">
+              {/* Display each submission separately */}
+              {displaySubmissions.map((submission, submissionIndex) => {
+                const generations = Array.isArray(submission.generations) ? submission.generations : [];
+                const hasGenerations = generations.some(gen => 
+                  gen.suggestions?.some(s => s && s.trim()) || gen.isGenerating
+                );
+                
+                return (
+                  <div key={submission.id || submissionIndex}>
+                    {submissionIndex > 0 && (
+                      <div className="submission-divider">
+                        <div className="submission-divider-line"></div>
+                        <span className="submission-divider-label">Previous Submission</span>
+                        <div className="submission-divider-line"></div>
+                      </div>
                     )}
-                    <span className="setting-badge">{entry.settings.useEmoticons ? 'With Emojis' : 'No Emojis'}</span>
-                  </div>
-                )}
-                <div className="regenerate-controls">
-                  <button
-                    onClick={() => handleRegenerate(entry)}
-                    className="regenerate-btn"
-                    disabled={isGenerating}
-                  >
-                    <RefreshCw size={14} />
-                    Regenerate
-                  </button>
-                  <label className="use-current-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={useCurrentSettings}
-                      onChange={(e) => setUseCurrentSettings(e.target.checked)}
-                      disabled={isGenerating}
-                    />
-                    <span className="checkbox-label-text">
-                      Use current settings
-                      <span className="tooltip-wrapper">
-                        <HelpCircle size={12} className="help-icon" />
-                        <span className="tooltip-text">When checked, regenerate uses current sidebar settings instead of original settings</span>
-                      </span>
-                    </span>
-                  </label>
-                </div>
-              </div>
-              <div className="history-suggestions-item">
-                <div className="suggestions-grid">
-                  {[0, 1, 2].map((index) => (
-                    <div key={index} className="suggestion-card">
-                      {entry.suggestions[index] ? (
+                    <div className="history-row">
+                    <div className="history-text-item">
+                      {submission.text?.trim() && (
                         <>
-                          <p>{entry.suggestions[index]}</p>
-                          <div className="suggestion-meta">
+                          <p>{submission.text}</p>
+                          <div className="history-text-meta">
                             <span className="char-count">
-                              {entry.suggestions[index].length} chars
+                              {submission.text.length} chars
                             </span>
                             <span className="word-count">
-                              {entry.suggestions[index].trim().split(/\s+/).length} words
+                              {submission.text.trim().split(/\s+/).length} words
                             </span>
                           </div>
-                          <button
-                            onClick={() => handleCopy(entry.suggestions[index], entry.id, index)}
-                            className="copy-btn"
-                            aria-label="Copy suggestion"
-                          >
-                            {copiedId === `${entry.id}-${index}` ? (
-                              <Check size={16} color="#10b981" />
-                            ) : (
-                              <Copy size={16} />
-                            )}
-                          </button>
                         </>
-                      ) : (
-                        <div className="suggestion-skeleton">
-                          <div className="skeleton-line"></div>
-                          <div className="skeleton-line short"></div>
+                      )}
+                      {submission.settings && (
+                        <div className="entry-settings">
+                          <span className="setting-badge">{submission.settings.apiMode === 'writer' ? 'Writer' : 'Rewriter'}</span>
+                          <span className="setting-badge">{submission.settings.tone}</span>
+                          {submission.settings.apiMode === 'writer' && (
+                            <span className="setting-badge">{submission.settings.length}</span>
+                          )}
+                          <span className="setting-badge">{submission.settings.useEmoticons ? 'With Emojis' : 'No Emojis'}</span>
+                        </div>
+                      )}
+                      {/* Only show regenerate controls on the most recent submission */}
+                      {submissionIndex === 0 && (
+                        <div className="regenerate-controls">
+                          <button
+                            onClick={handleRegenerate}
+                            className="regenerate-btn"
+                            disabled={isGenerating}
+                          >
+                            <RefreshCw size={14} />
+                            Regenerate
+                          </button>
+                          <label className="use-current-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={useCurrentSettings}
+                              onChange={(e) => setUseCurrentSettings(e.target.checked)}
+                              disabled={isGenerating}
+                            />
+                            <span className="checkbox-label-text">
+                              Use current settings
+                              <span className="tooltip-wrapper">
+                                <HelpCircle size={12} className="help-icon" />
+                                <span className="tooltip-text">When checked, regenerate uses current sidebar settings instead of original settings</span>
+                              </span>
+                            </span>
+                          </label>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="history-suggestions-item">
+                      {/* Display all generations for this submission */}
+                      {hasGenerations && generations.map((generation, genIndex) => (
+                        <div key={generation.id || genIndex} className="generation-group">
+                          {genIndex > 0 && <div className="generation-divider"></div>}
+                          <div className="suggestions-grid">
+                            {[0, 1, 2].map((index) => (
+                              <div key={index} className="suggestion-card">
+                                {generation.suggestions && generation.suggestions[index] ? (
+                                  <>
+                                    <p>{generation.suggestions[index]}</p>
+                                    <div className="suggestion-meta">
+                                      <span className="char-count">
+                                        {generation.suggestions[index].length} chars
+                                      </span>
+                                      <span className="word-count">
+                                        {generation.suggestions[index].trim().split(/\s+/).length} words
+                                      </span>
+                                    </div>
+                                    <button
+                                      onClick={() => handleCopy(generation.suggestions[index], currentEntry.id, `${generation.id}-${index}`)}
+                                      className="copy-btn"
+                                      aria-label="Copy suggestion"
+                                    >
+                                      {copiedId === `${currentEntry.id}-${generation.id}-${index}` ? (
+                                        <Check size={16} color="#10b981" />
+                                      ) : (
+                                        <Copy size={16} />
+                                      )}
+                                    </button>
+                                  </>
+                                ) : generation.isGenerating ? (
+                                  <div className="suggestion-skeleton">
+                                    <div className="skeleton-line"></div>
+                                    <div className="skeleton-line short"></div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          );
+        })()}
       </div>
       </div>
     </div>

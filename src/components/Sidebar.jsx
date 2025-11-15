@@ -19,7 +19,16 @@ export const Sidebar = ({
   onTogglePostSettings,
   onNavigate,
   currentRoute,
-  postSettings
+  postSettings,
+  // Post entries props
+  postEntries,
+  currentEntryId,
+  onSelectEntry,
+  onDeleteEntryClick,
+  onConfirmDeleteEntry,
+  onCancelDeleteEntry,
+  entryDeleteConfirmId,
+  getEntryTitle
 }) => {
   const isPostsMode = currentRoute === '/posts';
   const getDocTitle = (doc) => {
@@ -83,7 +92,50 @@ export const Sidebar = ({
       
       {isPostsMode ? (
         <div className="document-list">
-          {/* Empty spacer for posts mode to push settings to bottom */}
+          {postEntries && postEntries.map((entry) => (
+            <div
+              key={entry.id}
+              className={`doc-item ${currentEntryId === entry.id ? 'active' : ''}`}
+              onClick={() => onSelectEntry && onSelectEntry(entry.id)}
+            >
+              <div className="doc-item-content">
+                <div className="doc-title-row">
+                  <span className="doc-title">{getEntryTitle ? getEntryTitle(entry) : (entry.text || 'Untitled Post')}</span>
+                  <div className="delete-btn-container">
+                    {entryDeleteConfirmId === entry.id ? (
+                      <>
+                        <button
+                          className="cancel-btn"
+                          onClick={onCancelDeleteEntry}
+                          aria-label="Cancel delete"
+                        >
+                          <X size={16} />
+                        </button>
+                        <button
+                          className="confirm-btn"
+                          onClick={(e) => onConfirmDeleteEntry && onConfirmDeleteEntry(entry.id, e)}
+                          aria-label="Confirm delete"
+                        >
+                          <Check size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => onDeleteEntryClick && onDeleteEntryClick(entry.id, e)}
+                        aria-label="Delete post"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {entry.updatedAt && (
+                  <span className="doc-date">{formatDate(entry.updatedAt)}</span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="document-list">

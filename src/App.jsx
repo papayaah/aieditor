@@ -12,6 +12,7 @@ import { ChromeAiSetup } from './components/ChromeAiSetup';
 import { Sidebar } from './components/Sidebar';
 import { PostHelper } from './components/posts/PostHelper';
 import { useDocuments } from './hooks/useDocuments';
+import { usePostEntries } from './hooks/usePostEntries';
 import { useMarkdown } from './hooks/useMarkdown';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
@@ -56,6 +57,21 @@ function App() {
   } = useDocuments();
 
   const {
+    currentEntryId,
+    entries: postEntries,
+    deleteConfirmId: entryDeleteConfirmId,
+    deleteToast: entryDeleteToast,
+    getEntryTitle,
+    handleSaveEntry,
+    handleNewEntry,
+    handleSelectEntry,
+    handleDeleteClick: handleDeleteEntryClick,
+    handleCancelDelete: handleCancelDeleteEntry,
+    handleConfirmDelete: handleConfirmDeleteEntry,
+    loadEntries,
+  } = usePostEntries();
+
+  const {
     showMarkdown,
     markdown,
     toggleMarkdown,
@@ -96,16 +112,19 @@ function App() {
     return <Shell />;
   }
 
+  // Combine toasts from both hooks
+  const activeToast = deleteToast || entryDeleteToast;
+
   return (
     <div className="app">
-      {deleteToast && (
-        <div className={`toast ${deleteToast.type}`}>
-          {deleteToast.type === 'success' ? (
+      {activeToast && (
+        <div className={`toast ${activeToast.type}`}>
+          {activeToast.type === 'success' ? (
             <Check size={20} />
           ) : (
             <X size={20} />
           )}
-          <span>{deleteToast.message}</span>
+          <span>{activeToast.message}</span>
         </div>
       )}
       {showAiModal && <ChromeAiSetup onClose={() => setShowAiModal(false)} />}
@@ -125,7 +144,10 @@ function App() {
           navigate('/');
         }}
         onNewDocument={handleNewDocument}
-        onNewPost={() => window.handleNewPost?.()}
+        onNewPost={async () => {
+          await handleNewEntry();
+          await loadEntries();
+        }}
         onDeleteClick={handleDeleteClick}
         onConfirmDelete={handleConfirmDelete}
         onCancelDelete={handleCancelDelete}
@@ -134,6 +156,17 @@ function App() {
         onNavigate={navigate}
         currentRoute={currentRoute}
         postSettings={postSettings}
+        // Post entries props
+        postEntries={postEntries}
+        currentEntryId={currentEntryId}
+        onSelectEntry={(entryId) => {
+          handleSelectEntry(entryId);
+        }}
+        onDeleteEntryClick={handleDeleteEntryClick}
+        onConfirmDeleteEntry={handleConfirmDeleteEntry}
+        onCancelDeleteEntry={handleCancelDeleteEntry}
+        entryDeleteConfirmId={entryDeleteConfirmId}
+        getEntryTitle={getEntryTitle}
       />
       
       <div className="main-content">
@@ -150,7 +183,9 @@ function App() {
         />
         {currentRoute === '/posts' ? (
           <PostHelper 
-            onNewPost={() => window.handleNewPost?.()} 
+            currentEntryId={currentEntryId}
+            onEntrySaved={loadEntries}
+            onNewEntry={handleNewEntry}
             darkMode={darkMode}
             onSettingsExport={setPostSettings}
           />

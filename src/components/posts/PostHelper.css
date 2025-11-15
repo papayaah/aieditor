@@ -282,6 +282,27 @@
   gap: 20px;
 }
 
+.submission-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.submission-divider-line {
+  flex: 1;
+  height: 1px;
+  background-color: #e5e5e5;
+}
+
+.submission-divider-label {
+  font-size: 11px;
+  color: #9b9a97;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
 .history-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

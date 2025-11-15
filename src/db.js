@@ -6,6 +6,21 @@ db.version(2).stores({
   documents: '++id, title, content, updatedAt, createdAt'
 });
 
+db.version(3).stores({
+  documents: '++id, title, content, updatedAt, createdAt',
+  postEntries: 'id, text, suggestions, settings, isGenerating, createdAt, updatedAt'
+});
+
+db.version(4).stores({
+  documents: '++id, title, content, updatedAt, createdAt',
+  postEntries: 'id, text, suggestions, generations, settings, isGenerating, createdAt, updatedAt'
+});
+
+db.version(5).stores({
+  documents: '++id, title, content, updatedAt, createdAt',
+  postEntries: 'id, text, suggestions, generations, settings, submissions, isGenerating, createdAt, updatedAt'
+});
+
 export const createDocument = async () => {
   try {
     const now = new Date();

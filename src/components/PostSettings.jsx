@@ -65,9 +65,19 @@ export const PostSettings = ({
               onChange={(e) => setTone(e.target.value)}
               disabled={isGenerating}
             >
-              <option value="more-casual">Casual</option>
-              <option value="as-is">Neutral</option>
-              <option value="more-formal">Formal</option>
+              {apiMode === 'writer' ? (
+                <>
+                  <option value="casual">Casual</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="formal">Formal</option>
+                </>
+              ) : (
+                <>
+                  <option value="more-casual">More Casual</option>
+                  <option value="as-is">As-Is</option>
+                  <option value="more-formal">More Formal</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -79,9 +89,18 @@ export const PostSettings = ({
               onChange={(e) => setFormat(e.target.value)}
               disabled={isGenerating}
             >
-              <option value="plain-text">Plain Text</option>
-              <option value="markdown">Markdown</option>
-              <option value="as-is">As-Is</option>
+              {apiMode === 'writer' ? (
+                <>
+                  <option value="markdown">Markdown</option>
+                  <option value="plain-text">Plain Text</option>
+                </>
+              ) : (
+                <>
+                  <option value="as-is">As-Is</option>
+                  <option value="markdown">Markdown</option>
+                  <option value="plain-text">Plain Text</option>
+                </>
+              )}
             </select>
           </div>
 
