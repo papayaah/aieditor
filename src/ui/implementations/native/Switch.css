@@ -1,0 +1,54 @@
+.ui-switch-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-switch-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.ui-switch-slider {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  background: var(--switch-bg, #d1d5db);
+  border-radius: 24px;
+  transition: background 0.2s;
+}
+
+.ui-switch-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.ui-switch-input:checked + .ui-switch-slider {
+  background: var(--switch-bg-checked, #3b82f6);
+}
+
+.ui-switch-input:checked + .ui-switch-slider::before {
+  transform: translateX(20px);
+}
+
+.ui-switch-input:disabled + .ui-switch-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ui-switch-label {
+  font-size: 0.9375rem;
+  color: var(--text-primary, #1f2937);
+}

@@ -1,0 +1,70 @@
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.ui-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Sizes */
+.ui-button-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.ui-button-md {
+  padding: 0.5rem 1rem;
+  font-size: 0.9375rem;
+}
+
+.ui-button-lg {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+}
+
+/* Variants */
+.ui-button-default {
+  background: var(--button-bg, #3b82f6);
+  color: var(--button-text, white);
+}
+
+.ui-button-default:hover:not(:disabled) {
+  background: var(--button-bg-hover, #2563eb);
+}
+
+.ui-button-secondary {
+  background: var(--button-secondary-bg, #6b7280);
+  color: var(--button-secondary-text, white);
+}
+
+.ui-button-secondary:hover:not(:disabled) {
+  background: var(--button-secondary-bg-hover, #4b5563);
+}
+
+.ui-button-ghost {
+  background: transparent;
+  color: var(--text-primary, #1f2937);
+}
+
+.ui-button-ghost:hover:not(:disabled) {
+  background: var(--button-ghost-bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.ui-button-danger {
+  background: var(--button-danger-bg, #ef4444);
+  color: var(--button-danger-text, white);
+}
+
+.ui-button-danger:hover:not(:disabled) {
+  background: var(--button-danger-bg-hover, #dc2626);
+}

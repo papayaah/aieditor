@@ -1,0 +1,50 @@
+.ui-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+}
+
+.ui-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Sizes */
+.ui-icon-button-sm {
+  width: 28px;
+  height: 28px;
+}
+
+.ui-icon-button-md {
+  width: 36px;
+  height: 36px;
+}
+
+.ui-icon-button-lg {
+  width: 44px;
+  height: 44px;
+}
+
+/* Variants */
+.ui-icon-button-ghost {
+  color: var(--text-secondary, #6b7280);
+}
+
+.ui-icon-button-ghost:hover:not(:disabled) {
+  background: var(--button-ghost-bg-hover, rgba(0, 0, 0, 0.05));
+  color: var(--text-primary, #1f2937);
+}
+
+.ui-icon-button-default {
+  background: var(--button-bg, #3b82f6);
+  color: var(--button-text, white);
+}
+
+.ui-icon-button-default:hover:not(:disabled) {
+  background: var(--button-bg-hover, #2563eb);
+}
