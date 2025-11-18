@@ -20,6 +20,10 @@ export const Sidebar = ({
   onNavigate,
   currentRoute,
   postSettings,
+  // UI Library props
+  uiLibrary,
+  setUILibrary,
+  availableLibraries,
   // Post entries props
   postEntries,
   currentEntryId,
@@ -222,6 +226,9 @@ export const Sidebar = ({
             {...postSettings}
             collapsed={postSettingsCollapsed}
             onToggle={onTogglePostSettings}
+            uiLibrary={uiLibrary}
+            setUILibrary={setUILibrary}
+            availableLibraries={availableLibraries}
           />
         )
       ) : (

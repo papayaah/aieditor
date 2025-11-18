@@ -17,6 +17,7 @@ import { usePostEntries } from './hooks/usePostEntries';
 import { useMarkdown } from './hooks/useMarkdown';
 import { useSettings } from './hooks/useSettings';
 import { useAI } from './hooks/useAI';
+import { useUILibrary } from './hooks/useUILibrary';
 
 // Lazy load combined CSS after initial render
 if (typeof window !== 'undefined') {
@@ -113,6 +114,15 @@ function App() {
     setShowAiModal,
   } = useAI();
 
+  // UI Library switcher for PostCreator
+  const {
+    uiLibrary,
+    setUILibrary,
+    PostCreator: DynamicPostCreator,
+    availableLibraries,
+    isLoading: uiLibraryLoading,
+  } = useUILibrary();
+
   if (!currentDocId && currentRoute !== '/posts') {
     return <Shell />;
   }
@@ -161,6 +171,10 @@ function App() {
         onNavigate={navigate}
         currentRoute={currentRoute}
         postSettings={postSettings}
+        // UI Library props
+        uiLibrary={uiLibrary}
+        setUILibrary={setUILibrary}
+        availableLibraries={availableLibraries}
         // Post entries props
         postEntries={postEntries}
         currentEntryId={currentEntryId}
@@ -192,13 +206,17 @@ function App() {
           onShowAiModal={() => setShowAiModal(true)}
         />
         {currentRoute === '/posts' ? (
-          <PostCreator 
-            currentEntryId={currentEntryId}
-            onEntrySaved={loadEntries}
-            onNewEntry={handleNewEntry}
-            darkMode={darkMode}
-            onSettingsExport={setPostSettings}
-          />
+          uiLibraryLoading ? (
+            <Shell />
+          ) : (
+            <DynamicPostCreator 
+              currentEntryId={currentEntryId}
+              onEntrySaved={loadEntries}
+              onNewEntry={handleNewEntry}
+              darkMode={darkMode}
+              onSettingsExport={setPostSettings}
+            />
+          )
         ) : (
           <div className="editor-container">
             <div className="editor-wrapper">

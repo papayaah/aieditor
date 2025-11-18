@@ -26,7 +26,11 @@ export const PostSettings = ({
   setSeed,
   isGenerating,
   collapsed,
-  onToggle
+  onToggle,
+  // UI Library switcher
+  uiLibrary,
+  setUILibrary,
+  availableLibraries
 }) => {
   return (
     <div className="document-info">
@@ -39,6 +43,28 @@ export const PostSettings = ({
       
       {!collapsed && (
         <div className="doc-info-content post-settings-content">
+          {/* UI Library Switcher */}
+          {setUILibrary && availableLibraries && (
+            <div className="setting-group full-width">
+              <label htmlFor="ui-library">
+                UI Library
+                <span className="tooltip-icon" title="Switch between native HTML and Mantine UI components">
+                  <HelpCircle size={12} />
+                </span>
+              </label>
+              <select 
+                id="ui-library"
+                value={uiLibrary} 
+                onChange={(e) => setUILibrary(e.target.value)}
+                disabled={isGenerating}
+              >
+                {availableLibraries.map(lib => (
+                  <option key={lib.value} value={lib.value}>{lib.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="setting-group">
             <label htmlFor="post-api-mode">
               API Mode
